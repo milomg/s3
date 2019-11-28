@@ -7,7 +7,10 @@ use nalgebra as na;
 use serde_json::json;
 
 mod server;
-use server::{ClientMessage, Connect, Disconnect, GameServer, Message, ServerMessage};
+
+use server::{
+    ClientMessage, Connect, DecodedMessage, Disconnect, GameServer, Message, TransferClient,
+};
 
 /// Entry point for our route
 fn game_route(
@@ -25,7 +28,7 @@ fn game_route(
     )
 }
 
-struct WsGameSession {
+pub struct WsGameSession {
     /// unique session id
     id: usize,
 
@@ -45,9 +48,7 @@ impl Actor for WsGameSession {
         // routes within application
         let addr: Addr<_> = ctx.address();
         self.addr
-            .send(Connect {
-                addr: addr.recipient(),
-            })
+            .send(Connect { addr: addr })
             .into_actor(self)
             .then(|res, act, ctx| {
                 match res {
@@ -85,6 +86,14 @@ impl Handler<Message> for WsGameSession {
     }
 }
 
+impl Handler<TransferClient> for WsGameSession {
+    type Result = ();
+
+    fn handle(&mut self, msg: TransferClient, _: &mut Self::Context) {
+        self.addr = msg.0;
+    }
+}
+
 /// WebSocket message handler
 impl StreamHandler<ws::Message, ws::ProtocolError> for WsGameSession {
     fn handle(&mut self, msg: ws::Message, ctx: &mut Self::Context) {
@@ -94,7 +103,7 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for WsGameSession {
             ws::Message::Text(text) => {
                 // All the client sends are key messages so we assume that the message is a key message
                 if let Ok(m) = serde_json::from_str::<ClientMessage>(text.trim()) {
-                    self.addr.do_send(ServerMessage { id: self.id, m });
+                    self.addr.do_send(DecodedMessage { id: self.id, m });
                 }
 
                 // send message to game server
@@ -108,11 +117,14 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for WsGameSession {
     }
 }
 
-fn main() {
+fn main() -> Result<(), failure::Error> {
     let sys = actix::System::new("ghist");
 
     // Start game server actor in separate thread
     let server = GameServer::new().start();
+
+    let server2 = GameServer::new().start();
+    server.do_send(server::NewWormhole(server2));
 
     // Create Http server with WebSocket support
     HttpServer::new(move || {
@@ -128,4 +140,5 @@ fn main() {
 
     println!("Started http server: http://localhost:8080");
     let _ = sys.run();
+    Ok(())
 }

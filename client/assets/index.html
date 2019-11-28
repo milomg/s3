@@ -4,18 +4,13 @@
     <title>Rust!</title>
     <meta charset="utf-8" />
     <link rel="icon" type="image/png" href="imgs/icon.png" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Nova+Square" />
     <link rel="stylesheet" href="style.css" />
   </head>
 
   <body>
     <div id="login">
-      <input id="username" maxlength="15" placeholder="Nickname" autocomplete="off" autocapitalize="off" spellcheck="false" />
-      <select id="class">
-        <option value="Quickshot">Quickshot</option>
-        <option value="Sniper">Sniper</option>
-      </select>
-
+      <div class="radio" id="class-selector"></div>
+      <input id="username" maxlength="15" placeholder="Username" autocomplete="off" autocapitalize="off" spellcheck="false" />
       <p id="status">Connecting</p>
     </div>
     <script src="bundle.js"></script>

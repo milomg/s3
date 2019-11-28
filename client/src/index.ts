@@ -46,21 +46,44 @@ let healthMaterial = new THREE.MeshLambertMaterial({ color: 0x88ff00 });
 let manaMaterial = new THREE.MeshLambertMaterial({ color: 0x00bbff });
 let cooldownMaterial = new THREE.MeshLambertMaterial({ color: 0xbc7a51 });
 
+var wormholegeometry = new THREE.SphereGeometry(50);
+var wormholematerial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+
 let renderer = new THREE.WebGLRenderer({ antialias: false, logarithmicDepthBuffer: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
 const sprites: { [key: string]: THREE.Object3D } = {};
 const bullets: { [key: string]: THREE.Mesh } = {};
+let wormholes: THREE.Mesh[] = [];
 
 let ws = new WebSocket("ws://" + window.location.host + "/ws/");
 let opened = false;
 let myid = 0;
 
+const classSelector = document.getElementById("class-selector");
+let classes = ["Quickshot", "Sniper"];
+let selected = 0;
+for (let i in classes) {
+  let c = classes[+i];
+  const newDiv = document.createElement("img");
+  newDiv.src = "/img/spaceCraft" + (+i * 2 + 1) + ".png";
+  newDiv.classList.add("circle");
+  if (+i == selected) newDiv.classList.add("selected");
+  newDiv.addEventListener("click", () => {
+    let els = document.querySelectorAll(".selected");
+    for (let j = 0; j < els.length; j++) {
+      els[j].classList.remove("selected");
+    }
+    selected = +i;
+    newDiv.classList.add("selected");
+  });
+  classSelector.appendChild(newDiv);
+}
 document.getElementById("username").focus();
 document.getElementById("username").addEventListener("keydown", e => {
   if (e.keyCode == 13 && opened) {
-    send({ Spawn: [(document.getElementById("username") as HTMLInputElement).value, (document.getElementById("class") as HTMLSelectElement).value] });
+    send({ Spawn: [(document.getElementById("username") as HTMLInputElement).value, classes[selected]] });
     document.getElementById("login").style.display = "none";
   }
 });
@@ -86,6 +109,32 @@ ws.addEventListener("message", e => {
       camera.position.x = 400;
       camera.position.y = 400;
     }
+  }
+  if (m.clear) {
+    for (let w of wormholes) {
+      scene.remove(w);
+    }
+    wormholes = [];
+    for (let p in sprites) {
+      let group = sprites[p];
+      for (let i = group.children.length - 1; i >= 0; i--) {
+        group.remove(group.children[i]);
+      }
+      scene.remove(sprites[p]);
+      sprites[p].visible = false;
+      delete sprites[p];
+    }
+    for (let b in bullets) {
+      scene.remove(bullets[b]);
+      delete sprites[b];
+    }
+  }
+  if (m.wormhole) {
+    var sphere = new THREE.Mesh(wormholegeometry, wormholematerial);
+    sphere.position.x = m.wormhole.pos[0];
+    sphere.position.y = m.wormhole.pos[1];
+    scene.add(sphere);
+    wormholes.push(sphere);
   }
   if (m.players) {
     m.players.forEach((p: any) => {

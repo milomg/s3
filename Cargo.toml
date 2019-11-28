@@ -7,7 +7,6 @@ edition = "2018"
 [dependencies]
 rand = "*"
 nalgebra = {version = "*", features = ["serde-serialize"]}
-
 rstar = "*"
 
 serde = "*"
@@ -18,3 +17,8 @@ actix = "*"
 actix-web = "*"
 actix-files = "*"
 actix-web-actors = "*"
+
+r2d2 = "*"
+r2d2_sqlite = "*"
+rusqlite = "*"
+failure = "*"

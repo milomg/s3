@@ -1,5 +1,6 @@
 //! `GameServer` is an actor. It maintains list of connection client session.
 //!  Peers send messages to other peers through `GameServer`.
+use crate::WsGameSession;
 use actix::prelude::*;
 use na::Vector2;
 use nalgebra as na;
@@ -12,22 +13,36 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
-/// Message for game server communications
-#[derive(Message)]
-pub struct Message(pub String);
-
 /// New game session is created
 #[derive(Message)]
 #[rtype(usize)]
 pub struct Connect {
-    pub addr: Recipient<Message>,
+    pub addr: Addr<WsGameSession>,
+}
+
+#[derive(Message)]
+pub struct DecodedMessage {
+    pub id: usize,
+    pub m: ClientMessage,
 }
 
 /// Session is disconnected
-#[derive(Message, Serialize)]
+#[derive(Message)]
 pub struct Disconnect {
     pub id: usize,
 }
+
+#[derive(Message)]
+pub struct TransferClient(pub Addr<GameServer>);
+
+#[derive(Message)]
+pub struct Message(pub String);
+
+#[derive(Message)]
+pub struct Transfer(pub usize, pub Addr<WsGameSession>, pub Player);
+
+#[derive(Message)]
+pub struct NewWormhole(pub Addr<GameServer>);
 
 #[derive(Deserialize, Serialize, Copy, Clone)]
 pub enum Classes {
@@ -43,10 +58,31 @@ pub enum ClientMessage {
     Split(bool),
 }
 
-#[derive(Message)]
-pub struct ServerMessage {
+#[derive(Serialize)]
+struct ClientPlayer {
+    id: usize,
+    pos: Vector2<f32>,
+    name: String,
+    angle: f32,
+    health: u8,
+    mana: u8,
+    class: Classes,
+    shot_time: u128,
+}
+#[derive(Serialize)]
+pub struct ClientBullet {
+    pub vel: Vector2<f32>,
+    pub pos: Vector2<f32>,
     pub id: usize,
-    pub m: ClientMessage,
+}
+#[derive(Serialize)]
+pub struct ClientWormhole {
+    pub pos: Vector2<f32>,
+}
+#[derive(Serialize)]
+struct Playfield {
+    players: Vec<ClientPlayer>,
+    bullets: Vec<ClientBullet>,
 }
 
 pub struct Player {
@@ -63,18 +99,6 @@ pub struct Player {
     pub class: Classes,
     pub name: String,
 }
-
-impl<'a> RTreeObject for &'a Player {
-    type Envelope = AABB<[f32; 2]>;
-
-    fn envelope(&self) -> Self::Envelope {
-        let size = 30.0;
-        AABB::from_corners(
-            [self.pos.x - size, self.pos.y - size],
-            [self.pos.x + size, self.pos.y + size],
-        )
-    }
-}
 pub struct Bullet {
     pub vel: Vector2<f32>,
     pub pos: Vector2<f32>,
@@ -83,55 +107,69 @@ pub struct Bullet {
     pub id: usize,
     pub owner: usize,
 }
+struct Wormhole {
+    pos: Vector2<f32>,
+    addr: Addr<GameServer>,
+}
+
+impl Player {
+    const RADIUS: f32 = 30.0;
+}
+impl Bullet {
+    const RADIUS: f32 = 10.0;
+}
+impl Wormhole {
+    const RADIUS: f32 = 30.0;
+}
 
 impl PartialEq for Bullet {
     fn eq(&self, other: &Bullet) -> bool {
         self.id == other.id
     }
 }
-impl<'a> RTreeObject for &'a Bullet {
+impl<'a> RTreeObject for &'a Player {
     type Envelope = AABB<[f32; 2]>;
 
     fn envelope(&self) -> Self::Envelope {
-        let size = 10.0;
+        let size = Player::RADIUS;
         AABB::from_corners(
             [self.pos.x - size, self.pos.y - size],
             [self.pos.x + size, self.pos.y + size],
         )
     }
 }
+impl<'a> RTreeObject for &'a Bullet {
+    type Envelope = AABB<[f32; 2]>;
+
+    fn envelope(&self) -> Self::Envelope {
+        let size = Bullet::RADIUS;
+        AABB::from_corners(
+            [self.pos.x - size, self.pos.y - size],
+            [self.pos.x + size, self.pos.y + size],
+        )
+    }
+}
+impl<'a> RTreeObject for &'a Wormhole {
+    type Envelope = AABB<[f32; 2]>;
+
+    fn envelope(&self) -> Self::Envelope {
+        let size = Wormhole::RADIUS;
+        AABB::from_corners(
+            [self.pos.x - size, self.pos.y - size],
+            [self.pos.x + size, self.pos.y + size],
+        )
+    }
+}
+
 /// `GameServer` responsible for coordinating game sessions.
 /// implementation is super primitive
 pub struct GameServer {
-    sessions: HashMap<usize, Recipient<Message>>,
+    sessions: HashMap<usize, Addr<WsGameSession>>,
     players: HashMap<usize, Player>,
     bullets: Vec<Bullet>,
     rng: RefCell<ThreadRng>,
+    wormholes: Vec<Wormhole>,
     tick: usize,
-}
-
-#[derive(Serialize)]
-struct ClientPlayer {
-    id: usize,
-    pos: Vector2<f32>,
-    name: String,
-    angle: f32,
-    health: u8,
-    mana: u8,
-    class: Classes,
-    shot_time: u128,
-}
-
-#[derive(Serialize)]
-pub struct ClientBullet {
-    pub vel: Vector2<f32>,
-    pub pos: Vector2<f32>,
-    pub id: usize,
-}
-#[derive(Serialize)]
-struct Playfield {
-    players: Vec<ClientPlayer>,
-    bullets: Vec<ClientBullet>,
 }
 
 impl GameServer {
@@ -141,6 +179,7 @@ impl GameServer {
             sessions: HashMap::new(),
             players: HashMap::new(),
             bullets: Vec::new(),
+            wormholes: Vec::new(),
             rng: RefCell::new(rng),
             tick: 0,
         }
@@ -296,6 +335,38 @@ impl GameServer {
         self.send_message(&serialized);
     }
     fn collision_trees(&mut self) {
+        let pt = RTree::bulk_load(self.players.values().collect());
+
+        let mut move_players = Vec::new();
+        for w in &self.wormholes {
+            let mut wv = Vec::new();
+            let intersecting = pt.locate_in_envelope_intersecting(&(w).envelope());
+            for intersect in intersecting {
+                if (intersect.pos - w.pos).magnitude()
+                    <= (Player::RADIUS + Wormhole::RADIUS).powf(2.0)
+                {
+                    wv.push(intersect.id);
+                }
+            }
+            move_players.push(wv);
+        }
+        for (i, pl) in move_players.iter().enumerate() {
+            for pi in pl {
+                if let Some(p) = self.players.remove(pi) {
+                    if let Some(a) = self.sessions.remove(pi) {
+                        a.do_send(TransferClient(self.wormholes[i].addr.clone()));
+                        self.send_message(
+                            &json!({
+                                "death": p.id,
+                            })
+                            .to_string(),
+                        );
+                        self.wormholes[i].addr.do_send(Transfer(p.id, a, p));
+                    }
+                }
+            }
+        }
+
         let dt = RTree::bulk_load(self.bullets.iter().map(|b| b).collect());
 
         let mut health_map = HashMap::new();
@@ -303,7 +374,10 @@ impl GameServer {
         for (i, p) in &self.players {
             let intersecting = dt.locate_in_envelope_intersecting(&(p).envelope());
             for intersect in intersecting {
-                if intersect.owner != p.id {
+                if intersect.owner != p.id
+                    && (intersect.pos - p.pos).magnitude()
+                        <= (Player::RADIUS + Bullet::RADIUS).powf(2.0)
+                {
                     *health_map.entry(*i).or_insert(0) += match intersect.class {
                         Classes::Sniper => 60,
                         Classes::Quickshot => 30,
@@ -313,6 +387,7 @@ impl GameServer {
                 }
             }
         }
+
         for (i, h) in &health_map {
             self.players
                 .entry(*i)
@@ -361,10 +436,56 @@ impl Handler<Connect> for GameServer {
     fn handle(&mut self, msg: Connect, _: &mut Context<Self>) -> Self::Result {
         // register session with random id
         let id = self.rng.borrow_mut().gen::<usize>();
+        for w in &self.wormholes {
+            msg.addr.do_send(Message(
+                "{\"wormhole\":".to_owned()
+                    + &::serde_json::to_string(&ClientWormhole { pos: w.pos }).unwrap()
+                    + "}",
+            ));
+        }
         self.sessions.insert(id, msg.addr);
 
         // send id back
         id
+    }
+}
+
+/// Handler for Connect message.
+///
+/// Register new session and assign unique id to this session
+impl Handler<Transfer> for GameServer {
+    type Result = ();
+
+    fn handle(&mut self, msg: Transfer, _: &mut Context<Self>) -> Self::Result {
+        self.players.insert(msg.0, msg.2);
+        msg.1.do_send(Message(
+            json!({
+                "clear":true
+            })
+            .to_string(),
+        ));
+        self.sessions.insert(msg.0, msg.1);
+    }
+}
+
+/// Handler for Connect message.
+///
+/// Register new session and assign unique id to this session
+impl Handler<NewWormhole> for GameServer {
+    type Result = ();
+
+    fn handle(&mut self, msg: NewWormhole, _: &mut Context<Self>) -> Self::Result {
+        let pos = Vector2::new(0.0, 0.0);
+        self.wormholes.push(Wormhole {
+            pos: pos,
+            addr: msg.0,
+        });
+
+        self.send_message(
+            &("{\"wormhole\":".to_owned()
+                + &::serde_json::to_string(&ClientWormhole { pos: pos }).unwrap()
+                + "}"),
+        )
     }
 }
 
@@ -385,10 +506,10 @@ impl Handler<Disconnect> for GameServer {
     }
 }
 
-impl Handler<ServerMessage> for GameServer {
+impl Handler<DecodedMessage> for GameServer {
     type Result = ();
 
-    fn handle(&mut self, msg: ServerMessage, _: &mut Context<Self>) {
+    fn handle(&mut self, msg: DecodedMessage, _: &mut Context<Self>) {
         if let ClientMessage::Spawn(n, c) = msg.m {
             let p = Player {
                 id: msg.id,
