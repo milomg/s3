@@ -1,0 +1,20 @@
+[package]
+name = "s3"
+version = "0.1.0"
+authors = ["modderme123 <modderme123@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+rand = "*"
+nalgebra = {version = "*", features = ["serde-serialize"]}
+
+rstar = "*"
+
+serde = "*"
+serde_derive = "*"
+serde_json = "*"
+
+actix = "*"
+actix-web = "*"
+actix-files = "*"
+actix-web-actors = "*"

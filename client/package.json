@@ -1,0 +1,30 @@
+{
+  "name": "static",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "fmt": "prettier --write {src,assets}/**/*.{html,css,js,ts} --print-width 200",
+    "lint": "eslint 'src/**/*.{js,ts}' --fix",
+    "watch": "webpack -d --watch",
+    "build": "webpack -p"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^2.9.0",
+    "@typescript-eslint/parser": "^2.9.0",
+    "copy-webpack-plugin": "^5.0.5",
+    "eslint": "^6.7.1",
+    "prettier": "^1.19.1",
+    "ts-loader": "^6.2.1",
+    "typescript": "^3.7.2",
+    "webpack": "^4.41.2",
+    "webpack-cli": "^3.3.10"
+  },
+  "dependencies": {
+    "@types/three": "^0.103.2",
+    "three": "^0.110.0"
+  }
+}
