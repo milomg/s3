@@ -8,7 +8,6 @@ use rand::prelude::*;
 use rstar::{RTree, RTreeObject, AABB};
 use serde_derive::{Deserialize, Serialize};
 use serde_json::json;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
@@ -39,7 +38,7 @@ pub struct TransferClient(pub Addr<GameServer>);
 pub struct Message(pub String);
 
 #[derive(Message)]
-pub struct Transfer(pub usize, pub Addr<WsGameSession>, pub Player);
+struct Transfer(usize, Addr<WsGameSession>, Player);
 
 #[derive(Message)]
 pub struct NewWormhole(pub Addr<GameServer>);
@@ -70,14 +69,14 @@ struct ClientPlayer {
     shot_time: u128,
 }
 #[derive(Serialize)]
-pub struct ClientBullet {
-    pub vel: Vector2<f32>,
-    pub pos: Vector2<f32>,
-    pub id: usize,
+struct ClientBullet {
+    vel: Vector2<f32>,
+    pos: Vector2<f32>,
+    id: usize,
 }
 #[derive(Serialize)]
-pub struct ClientWormhole {
-    pub pos: Vector2<f32>,
+struct ClientWormhole {
+    pos: Vector2<f32>,
 }
 #[derive(Serialize)]
 struct Playfield {
@@ -85,35 +84,125 @@ struct Playfield {
     bullets: Vec<ClientBullet>,
 }
 
-pub struct Player {
-    pub id: usize,
-    pub vel: Vector2<f32>,
-    pub pos: Vector2<f32>,
-    pub angle: f32,
-    pub health: u8,
-    pub mana: u8,
-    pub mouse: bool,
-    pub split: bool,
-    pub shot_time: Instant,
-    pub split_time: Instant,
-    pub class: Classes,
-    pub name: String,
+struct Player {
+    id: usize,
+    vel: Vector2<f32>,
+    pos: Vector2<f32>,
+    angle: f32,
+    health: u8,
+    mana: u8,
+    mouse: bool,
+    split: bool,
+    shot_time: Instant,
+    split_time: Instant,
+    class: Classes,
+    name: String,
 }
-pub struct Bullet {
-    pub vel: Vector2<f32>,
-    pub pos: Vector2<f32>,
-    pub spawn: Instant,
-    pub class: Classes,
-    pub id: usize,
-    pub owner: usize,
+struct Bullet {
+    vel: Vector2<f32>,
+    pos: Vector2<f32>,
+    spawn: Instant,
+    class: Classes,
+    id: usize,
+    owner: usize,
+}
+struct BossBullet {
+    vel: Vector2<f32>,
+    pos: Vector2<f32>,
+    spawn: Instant,
+    id: usize,
 }
 struct Wormhole {
     pos: Vector2<f32>,
     addr: Addr<GameServer>,
 }
+struct Boss {
+    pos: Vector2<f32>,
+    pub shot_time: Instant,
+}
 
 impl Player {
     const RADIUS: f32 = 30.0;
+    fn tick(&mut self, dt: f32, rng: &mut ThreadRng, bullets: &mut Vec<Bullet>) {
+        let acc = Vector2::new(self.angle.sin(), self.angle.cos());
+        if self.split && (self.split_time.elapsed() > Duration::from_millis(600)) && self.mana > 100
+        {
+            self.split_time = Instant::now();
+            self.mana -= 100;
+        }
+        if self.split_time.elapsed() < Duration::from_millis(600) {
+            self.vel += 1. * acc * dt;
+            self.vel *= (0.95_f32).powf(dt);
+        } else {
+            self.vel += 0.6 * acc * dt;
+            self.vel *= (0.9_f32).powf(dt);
+        }
+        self.pos += self.vel;
+        self.pos.x = self.pos.x.max(0.0).min(800.0);
+        self.pos.y = self.pos.y.max(0.0).min(800.0);
+
+        if self.mouse
+            && self.shot_time.elapsed()
+                > Duration::from_millis(match self.class {
+                    Classes::Quickshot => 750,
+                    Classes::Sniper => 1000,
+                })
+        {
+            let acopy = Vector2::new(acc.y, -acc.x);
+
+            match self.class {
+                Classes::Quickshot => {
+                    for i in (10..=12).step_by(1) {
+                        let f = i as f32;
+                        bullets.push(Bullet {
+                            pos: self.pos.clone() - acopy * 35.0,
+                            vel: acc * (f) - acopy * (11.0 - f),
+                            spawn: Instant::now(),
+                            id: rng.gen::<usize>(),
+                            owner: self.id,
+                            class: self.class,
+                        });
+                        bullets.push(Bullet {
+                            pos: self.pos.clone() + acopy * 35.0,
+                            vel: acc * (f) + acopy * (11.0 - f),
+                            spawn: Instant::now(),
+                            id: rng.gen::<usize>(),
+                            owner: self.id,
+                            class: self.class,
+                        });
+                    }
+                }
+                _ => {
+                    bullets.push(Bullet {
+                        pos: self.pos.clone() + acopy * 35.0,
+                        vel: acc * 15.0 - acopy,
+                        spawn: Instant::now(),
+                        id: rng.gen::<usize>(),
+                        owner: self.id,
+                        class: self.class,
+                    });
+                    bullets.push(Bullet {
+                        pos: self.pos.clone() + acc * 35.0,
+                        vel: acc * 15.0 - acc,
+                        spawn: Instant::now(),
+                        id: rng.gen::<usize>(),
+                        owner: self.id,
+                        class: self.class,
+                    });
+                    bullets.push(Bullet {
+                        pos: self.pos.clone() - acopy * 35.0,
+                        vel: acc * 15.0 + acopy,
+                        spawn: Instant::now(),
+                        id: rng.gen::<usize>(),
+                        owner: self.id,
+                        class: self.class,
+                    });
+                }
+            }
+
+            self.shot_time = Instant::now();
+        }
+    }
 }
 impl Bullet {
     const RADIUS: f32 = 10.0;
@@ -167,9 +256,14 @@ pub struct GameServer {
     sessions: HashMap<usize, Addr<WsGameSession>>,
     players: HashMap<usize, Player>,
     bullets: Vec<Bullet>,
-    rng: RefCell<ThreadRng>,
+    boss: Option<Boss>,
+    boss_bullets: Vec<BossBullet>,
+    rng: ThreadRng,
     wormholes: Vec<Wormhole>,
-    tick: usize,
+    tick: Instant,
+    health_tick: Instant,
+    quickshot_mana: Instant,
+    sniper_mana: Instant,
 }
 
 impl GameServer {
@@ -180,8 +274,13 @@ impl GameServer {
             players: HashMap::new(),
             bullets: Vec::new(),
             wormholes: Vec::new(),
-            rng: RefCell::new(rng),
-            tick: 0,
+            boss: None,
+            boss_bullets: Vec::new(),
+            rng: rng,
+            tick: Instant::now(),
+            health_tick: Instant::now(),
+            quickshot_mana: Instant::now(),
+            sniper_mana: Instant::now(),
         }
     }
     /// Send message to all players
@@ -200,95 +299,54 @@ impl GameServer {
         });
     }
     fn move_and_things(&mut self) {
-        for p in self.players.values_mut() {
-            let acc = Vector2::new(p.angle.sin(), p.angle.cos());
-            if p.split && (p.split_time.elapsed() > Duration::from_millis(600)) && p.mana > 100 {
-                p.split_time = Instant::now();
-                p.mana -= 100;
-            }
-            if p.split_time.elapsed() < Duration::from_millis(600) {
-                p.vel += 1. * acc;
-                p.vel *= 0.95;
-            } else {
-                p.vel += 0.6 * acc;
-                p.vel *= 0.9;
-            }
-            p.pos += p.vel;
-            p.pos.x = p.pos.x.max(0.0).min(800.0);
-            p.pos.y = p.pos.y.max(0.0).min(800.0);
-            if self.tick % 3 != 2 {
-                p.health = p.health.saturating_add(1);
-            }
-            match (self.tick % 3, p.class) {
-                (2, Classes::Quickshot) => (),
-                (_, Classes::Quickshot) => p.mana = p.mana.saturating_add(1),
-                (_, Classes::Sniper) => p.mana = p.mana.saturating_add(1),
-            }
-
-            if p.mouse
-                && p.shot_time.elapsed()
-                    > Duration::from_millis(match p.class {
-                        Classes::Quickshot => 750,
-                        Classes::Sniper => 1000,
-                    })
-            {
-                let acopy = Vector2::new(acc.y, -acc.x);
-
-                match p.class {
-                    Classes::Quickshot => {
-                        for i in (10..=12).step_by(1) {
-                            let f = i as f32;
-                            self.bullets.push(Bullet {
-                                pos: p.pos.clone() - acopy * 35.0,
-                                vel: acc * (f) - acopy * (11.0 - f),
-                                spawn: Instant::now(),
-                                id: self.rng.borrow_mut().gen::<usize>(),
-                                owner: p.id,
-                                class: p.class,
-                            });
-                            self.bullets.push(Bullet {
-                                pos: p.pos.clone() + acopy * 35.0,
-                                vel: acc * (f) + acopy * (11.0 - f),
-                                spawn: Instant::now(),
-                                id: self.rng.borrow_mut().gen::<usize>(),
-                                owner: p.id,
-                                class: p.class,
-                            });
-                        }
-                    }
-                    _ => {
-                        self.bullets.push(Bullet {
-                            pos: p.pos.clone() + acopy * 35.0,
-                            vel: acc * 15.0 - acopy,
-                            spawn: Instant::now(),
-                            id: self.rng.borrow_mut().gen::<usize>(),
-                            owner: p.id,
-                            class: p.class,
-                        });
-                        self.bullets.push(Bullet {
-                            pos: p.pos.clone() + acc * 35.0,
-                            vel: acc * 15.0 - acc,
-                            spawn: Instant::now(),
-                            id: self.rng.borrow_mut().gen::<usize>(),
-                            owner: p.id,
-                            class: p.class,
-                        });
-                        self.bullets.push(Bullet {
-                            pos: p.pos.clone() - acopy * 35.0,
-                            vel: acc * 15.0 + acopy,
-                            spawn: Instant::now(),
-                            id: self.rng.borrow_mut().gen::<usize>(),
-                            owner: p.id,
-                            class: p.class,
-                        });
+        let dt = self.tick.elapsed().as_millis() as f32 / 16.0;
+        let ht = (self.health_tick.elapsed().as_millis() / 24) as u8;
+        let qt = (self.quickshot_mana.elapsed().as_millis() / 24) as u8; // 2/3*1/16 of millis
+        let st = (self.sniper_mana.elapsed().as_millis() / 16) as u8;
+        if let Some(boss) = &mut self.boss {
+            if self.players.len() > 0 {
+                let mut nearest_player = self.players.values().next().unwrap();
+                let mut nearest_dist = std::f32::MAX;
+                for p in self.players.values() {
+                    let dist = (boss.pos - p.pos).magnitude();
+                    if dist < nearest_dist {
+                        nearest_dist = dist;
+                        nearest_player = p;
                     }
                 }
+                boss.pos += (nearest_player.pos - boss.pos).normalize();
 
-                p.shot_time = Instant::now();
+                if boss.shot_time.elapsed() > Duration::from_millis(500) {
+                    self.boss_bullets.push(BossBullet {
+                        pos: boss.pos,
+                        id: self.rng.gen::<usize>(),
+                        spawn: Instant::now(),
+                        vel: (nearest_player.pos - boss.pos).normalize() * 10.0,
+                    });
+                    boss.shot_time = Instant::now();
+                }
             }
         }
+        for p in self.players.values_mut() {
+            p.tick(dt, &mut self.rng, &mut self.bullets);
+
+            p.health = p.health.saturating_add(ht);
+
+            p.mana = p.mana.saturating_add(match p.class {
+                Classes::Quickshot => qt,
+                Classes::Sniper => st,
+            });
+        }
+
+        self.health_tick += Duration::from_millis(ht as u64 * 24);
+        self.quickshot_mana += Duration::from_millis(qt as u64 * 24);
+        self.sniper_mana += Duration::from_millis(st as u64 * 16);
+
         for b in self.bullets.iter_mut() {
-            b.pos += b.vel;
+            b.pos += b.vel * dt;
+        }
+        for b in self.boss_bullets.iter_mut() {
+            b.pos += b.vel * dt;
         }
 
         self.collision_trees();
@@ -303,7 +361,10 @@ impl GameServer {
                 })
         });
 
-        self.tick += 1;
+        self.boss_bullets
+            .retain(|b| b.spawn.elapsed() < Duration::from_millis(1250));
+
+        self.tick = Instant::now();
     }
     fn send_to_players(&self) {
         let playfield = Playfield {
@@ -329,6 +390,11 @@ impl GameServer {
                     vel: b.vel,
                     id: b.id,
                 })
+                .chain(self.boss_bullets.iter().map(|b| ClientBullet {
+                    pos: b.pos,
+                    vel: b.vel,
+                    id: b.id,
+                }))
                 .collect(),
         };
         let serialized = ::serde_json::to_string(&playfield).unwrap();
@@ -435,7 +501,7 @@ impl Handler<Connect> for GameServer {
 
     fn handle(&mut self, msg: Connect, _: &mut Context<Self>) -> Self::Result {
         // register session with random id
-        let id = self.rng.borrow_mut().gen::<usize>();
+        let id = self.rng.gen::<usize>();
         for w in &self.wormholes {
             msg.addr.do_send(Message(
                 "{\"wormhole\":".to_owned()
@@ -450,13 +516,15 @@ impl Handler<Connect> for GameServer {
     }
 }
 
-/// Handler for Connect message.
-///
-/// Register new session and assign unique id to this session
 impl Handler<Transfer> for GameServer {
     type Result = ();
 
     fn handle(&mut self, msg: Transfer, _: &mut Context<Self>) -> Self::Result {
+        // msg.2.mana = 255;
+        // msg.2.health = 255;
+        // msg.2.shot_time = Instant::now() - Duration::from_secs(2);
+        // msg.2.split_time = Instant::now() - Duration::from_secs(2);
+
         self.players.insert(msg.0, msg.2);
         msg.1.do_send(Message(
             json!({
@@ -464,18 +532,25 @@ impl Handler<Transfer> for GameServer {
             })
             .to_string(),
         ));
+        for w in &self.wormholes {
+            msg.1.do_send(Message(
+                "{\"wormhole\":".to_owned()
+                    + &::serde_json::to_string(&ClientWormhole { pos: w.pos }).unwrap()
+                    + "}",
+            ));
+        }
         self.sessions.insert(msg.0, msg.1);
     }
 }
 
-/// Handler for Connect message.
-///
-/// Register new session and assign unique id to this session
 impl Handler<NewWormhole> for GameServer {
     type Result = ();
 
     fn handle(&mut self, msg: NewWormhole, _: &mut Context<Self>) -> Self::Result {
-        let pos = Vector2::new(0.0, 0.0);
+        let b1 = if self.rng.gen::<bool>() { 800.0 } else { 0.0 };
+        let b2 = self.rng.gen::<bool>();
+        let pos = self.rng.gen_range(0.0, 800.0);
+        let pos = Vector2::new(if b2 { b1 } else { pos }, if b2 { pos } else { b1 });
         self.wormholes.push(Wormhole {
             pos: pos,
             addr: msg.0,
@@ -511,10 +586,13 @@ impl Handler<DecodedMessage> for GameServer {
 
     fn handle(&mut self, msg: DecodedMessage, _: &mut Context<Self>) {
         if let ClientMessage::Spawn(n, c) = msg.m {
+            let x = self.rng.gen_range(0.0, 800.0);
+            let y = self.rng.gen_range(0.0, 800.0);
+
             let p = Player {
                 id: msg.id,
                 vel: Vector2::new(0.0, 0.0),
-                pos: Vector2::new(400.0, 400.0),
+                pos: Vector2::new(x, y),
                 shot_time: Instant::now() - Duration::from_secs(2),
                 split_time: Instant::now() - Duration::from_secs(2),
                 angle: 0.0,

@@ -124,7 +124,8 @@ fn main() -> Result<(), failure::Error> {
     let server = GameServer::new().start();
 
     let server2 = GameServer::new().start();
-    server.do_send(server::NewWormhole(server2));
+    server.do_send(server::NewWormhole(server2.clone()));
+    // server2.do_send(server::NewWormhole(server.clone()));
 
     // Create Http server with WebSocket support
     HttpServer::new(move || {

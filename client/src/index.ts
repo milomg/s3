@@ -47,7 +47,7 @@ let manaMaterial = new THREE.MeshLambertMaterial({ color: 0x00bbff });
 let cooldownMaterial = new THREE.MeshLambertMaterial({ color: 0xbc7a51 });
 
 var wormholegeometry = new THREE.SphereGeometry(50);
-var wormholematerial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+var wormholematerial = new THREE.MeshLambertMaterial({ color: 0xffff00 });
 
 let renderer = new THREE.WebGLRenderer({ antialias: false, logarithmicDepthBuffer: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -247,22 +247,58 @@ ws.addEventListener("message", e => {
 function send(m: any) {
   if (opened) ws.send(JSON.stringify(m));
 }
+var rightclick = false;
+var leftclick = false;
+var spacekey = false;
+var skey = false;
 window.addEventListener("mousemove", e => {
   let a = Math.atan2(e.clientX - window.innerWidth / 2, window.innerHeight / 2 - e.clientY);
   if (a < 0) a += 2 * Math.PI;
   send({ Angle: a });
 });
+window.addEventListener("contextmenu", e => {
+  e.preventDefault();
+  return false;
+});
 window.addEventListener("keydown", e => {
-  if (e.keyCode == 83) send({ Split: true });
+  if (e.keyCode == 83) {
+    skey = true
+    send({ Split: rightclick||skey });
+  }
+  if (e.keyCode == 32) { 
+    spacekey = true;
+    send({ Click: leftclick||spacekey });
+  }
 });
 window.addEventListener("keyup", e => {
-  if (e.keyCode == 83) send({ Split: false });
+  if (e.keyCode == 83) {
+    skey = false;
+    send({ Split: rightclick||skey });
+  }
+  if (e.keyCode == 32) { 
+    spacekey = false
+    send({ Click: leftclick||spacekey });
+  }
 });
-window.addEventListener("mousedown", () => {
-  send({ Click: true });
+window.addEventListener("mousedown", e => {
+  if (e.button==0){
+    leftclick = true;
+  send({ Click: leftclick||spacekey });
+  }
+  if (e.button==2){
+    rightclick = true;
+    send({ Split: rightclick||skey });
+  }
 });
-window.addEventListener("mouseup", () => {
-  send({ Click: false });
+window.addEventListener("mouseup", e => {
+  if (e.button==0){
+    leftclick = false;
+    send({ Click: leftclick||spacekey });
+    }
+    if (e.button==2){
+      rightclick = false;
+      send({ Split: rightclick||skey });
+    }
 });
 window.addEventListener("resize", () => {
   aspect = window.innerHeight / window.innerWidth;
