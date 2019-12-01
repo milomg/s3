@@ -135,7 +135,10 @@ fn main() -> Result<(), failure::Error> {
             // static resources
             .service(fs::Files::new("/", "client/dist/").index_file("index.html"))
     })
-    .bind("0.0.0.0:8080")
+    .bind(format!(
+        "0.0.0.0:{}",
+        std::env::var("PORT").unwrap_or("8080".to_string())
+    ))
     .unwrap()
     .start();
 

@@ -38,7 +38,3 @@ impl Actor for DbServer {
 
     fn started(&mut self, ctx: &mut Self::Context) {}
 }
-
-impl Handler<Disconnect> for DbServer {
-
-}

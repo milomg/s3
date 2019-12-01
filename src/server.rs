@@ -79,9 +79,15 @@ struct ClientWormhole {
     pos: Vector2<f32>,
 }
 #[derive(Serialize)]
+struct ClientBoss {
+    pos: Vector2<f32>,
+    health: u8,
+}
+#[derive(Serialize)]
 struct Playfield {
     players: Vec<ClientPlayer>,
     bullets: Vec<ClientBullet>,
+    boss: Option<ClientBoss>,
 }
 
 struct Player {
@@ -118,11 +124,13 @@ struct Wormhole {
 }
 struct Boss {
     pos: Vector2<f32>,
-    pub shot_time: Instant,
+    health: u8,
+    shot_time: Instant,
+    shot_time2: Instant,
 }
 
 impl Player {
-    const RADIUS: f32 = 30.0;
+    const RADIUS: f32 = 35.0;
     fn tick(&mut self, dt: f32, rng: &mut ThreadRng, bullets: &mut Vec<Bullet>) {
         let acc = Vector2::new(self.angle.sin(), self.angle.cos());
         if self.split && (self.split_time.elapsed() > Duration::from_millis(600)) && self.mana > 100
@@ -207,7 +215,13 @@ impl Player {
 impl Bullet {
     const RADIUS: f32 = 10.0;
 }
+impl BossBullet {
+    const RADIUS: f32 = 10.0;
+}
 impl Wormhole {
+    const RADIUS: f32 = 30.0;
+}
+impl Boss {
     const RADIUS: f32 = 30.0;
 }
 
@@ -238,11 +252,33 @@ impl<'a> RTreeObject for &'a Bullet {
         )
     }
 }
+impl<'a> RTreeObject for &'a BossBullet {
+    type Envelope = AABB<[f32; 2]>;
+
+    fn envelope(&self) -> Self::Envelope {
+        let size = BossBullet::RADIUS;
+        AABB::from_corners(
+            [self.pos.x - size, self.pos.y - size],
+            [self.pos.x + size, self.pos.y + size],
+        )
+    }
+}
 impl<'a> RTreeObject for &'a Wormhole {
     type Envelope = AABB<[f32; 2]>;
 
     fn envelope(&self) -> Self::Envelope {
         let size = Wormhole::RADIUS;
+        AABB::from_corners(
+            [self.pos.x - size, self.pos.y - size],
+            [self.pos.x + size, self.pos.y + size],
+        )
+    }
+}
+impl<'a> RTreeObject for &'a Boss {
+    type Envelope = AABB<[f32; 2]>;
+
+    fn envelope(&self) -> Self::Envelope {
+        let size = Boss::RADIUS;
         AABB::from_corners(
             [self.pos.x - size, self.pos.y - size],
             [self.pos.x + size, self.pos.y + size],
@@ -264,23 +300,30 @@ pub struct GameServer {
     health_tick: Instant,
     quickshot_mana: Instant,
     sniper_mana: Instant,
+    boss_dead: Instant,
 }
 
 impl GameServer {
     pub fn new() -> GameServer {
-        let rng = rand::thread_rng();
+        let mut rng = rand::thread_rng();
         GameServer {
             sessions: HashMap::new(),
             players: HashMap::new(),
             bullets: Vec::new(),
             wormholes: Vec::new(),
-            boss: None,
+            boss: Some(Boss {
+                pos: Vector2::new(rng.gen_range(0.0, 800.0), rng.gen_range(0.0, 800.0)),
+                health: 255,
+                shot_time: Instant::now(),
+                shot_time2: Instant::now(),
+            }),
             boss_bullets: Vec::new(),
             rng: rng,
             tick: Instant::now(),
             health_tick: Instant::now(),
             quickshot_mana: Instant::now(),
             sniper_mana: Instant::now(),
+            boss_dead: Instant::now(),
         }
     }
     /// Send message to all players
@@ -314,17 +357,53 @@ impl GameServer {
                         nearest_player = p;
                     }
                 }
-                boss.pos += (nearest_player.pos - boss.pos).normalize();
+                let vel = (nearest_player.pos - boss.pos).normalize() * 3.0;
+                boss.pos += vel * dt;
 
                 if boss.shot_time.elapsed() > Duration::from_millis(500) {
+                    let velp = Vector2::new(vel.y, -vel.x);
                     self.boss_bullets.push(BossBullet {
-                        pos: boss.pos,
+                        pos: boss.pos - velp * 10.0,
                         id: self.rng.gen::<usize>(),
                         spawn: Instant::now(),
-                        vel: (nearest_player.pos - boss.pos).normalize() * 10.0,
+                        vel: vel * 3.0 + velp * 0.5,
+                    });
+                    self.boss_bullets.push(BossBullet {
+                        pos: boss.pos + velp * 10.0,
+                        id: self.rng.gen::<usize>(),
+                        spawn: Instant::now(),
+                        vel: vel * 3.0 - velp * 0.5,
                     });
                     boss.shot_time = Instant::now();
                 }
+                if boss.shot_time2.elapsed() > Duration::from_millis(250) {
+                    let velp = Vector2::new(vel.y, -vel.x);
+                    self.boss_bullets.push(BossBullet {
+                        pos: boss.pos - velp * 20.0,
+                        id: self.rng.gen::<usize>(),
+                        spawn: Instant::now(),
+                        vel: vel * 0.1,
+                    });
+                    self.boss_bullets.push(BossBullet {
+                        pos: boss.pos + velp * 20.0,
+                        id: self.rng.gen::<usize>(),
+                        spawn: Instant::now(),
+                        vel: vel * 0.1,
+                    });
+                    boss.shot_time2 = Instant::now();
+                }
+            }
+        } else {
+            if self.boss_dead.elapsed() > Duration::from_millis(3000) {
+                self.boss = Some(Boss {
+                    pos: Vector2::new(
+                        self.rng.gen_range(0.0, 800.0),
+                        self.rng.gen_range(0.0, 800.0),
+                    ),
+                    health: 255,
+                    shot_time: Instant::now(),
+                    shot_time2: Instant::now(),
+                })
             }
         }
         for p in self.players.values_mut() {
@@ -396,6 +475,12 @@ impl GameServer {
                     id: b.id,
                 }))
                 .collect(),
+            boss: self.boss.as_ref().and_then(|b| {
+                Some(ClientBoss {
+                    pos: b.pos,
+                    health: b.health,
+                })
+            }),
         };
         let serialized = ::serde_json::to_string(&playfield).unwrap();
         self.send_message(&serialized);
@@ -434,9 +519,30 @@ impl GameServer {
         }
 
         let dt = RTree::bulk_load(self.bullets.iter().map(|b| b).collect());
+        let dbt = RTree::bulk_load(self.boss_bullets.iter().map(|b| b).collect());
 
         let mut health_map = HashMap::new();
         let mut delete_bullets = HashSet::new();
+        let mut delete_boss_bullets = HashSet::new();
+        if let Some(boss) = &mut self.boss {
+            let intersecting = dt.locate_in_envelope_intersecting(&(&*boss).envelope());
+            for intersect in intersecting {
+                if (intersect.pos - boss.pos).magnitude()
+                    <= (Boss::RADIUS + Bullet::RADIUS).powf(2.0)
+                {
+                    boss.health = boss.health.saturating_sub(match intersect.class {
+                        Classes::Sniper => 30,
+                        Classes::Quickshot => 15,
+                    });
+
+                    delete_bullets.insert(intersect.id);
+                }
+            }
+            if boss.health == 0 {
+                self.boss = None;
+                self.boss_dead = Instant::now();
+            }
+        }
         for (i, p) in &self.players {
             let intersecting = dt.locate_in_envelope_intersecting(&(p).envelope());
             for intersect in intersecting {
@@ -452,6 +558,16 @@ impl GameServer {
                     delete_bullets.insert(intersect.id);
                 }
             }
+            let intersecting = dbt.locate_in_envelope_intersecting(&(p).envelope());
+            for intersect in intersecting {
+                if (intersect.pos - p.pos).magnitude()
+                    <= (Player::RADIUS + BossBullet::RADIUS).powf(2.0)
+                {
+                    *health_map.entry(*i).or_insert(0) += 60;
+
+                    delete_boss_bullets.insert(intersect.id);
+                }
+            }
         }
 
         for (i, h) in &health_map {
@@ -460,6 +576,8 @@ impl GameServer {
                 .and_modify(|p| p.health = p.health.saturating_sub(*h));
         }
         self.bullets.retain(|b| !delete_bullets.contains(&b.id));
+        self.boss_bullets
+            .retain(|b| !delete_boss_bullets.contains(&b.id));
     }
     fn reap_players(&mut self) {
         let mut delete = Vec::new();

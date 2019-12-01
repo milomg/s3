@@ -56,8 +56,10 @@ document.body.appendChild(renderer.domElement);
 const sprites: { [key: string]: THREE.Object3D } = {};
 const bullets: { [key: string]: THREE.Mesh } = {};
 let wormholes: THREE.Mesh[] = [];
+let boss: THREE.Mesh | undefined = undefined;
 
-let ws = new WebSocket("ws://" + window.location.host + "/ws/");
+let secure = (window.location.protocol.match(/s/g) || "").toString();
+let ws = new WebSocket(`ws${secure}://${window.location.host}/ws/`);
 let opened = false;
 let myid = 0;
 
@@ -135,6 +137,20 @@ ws.addEventListener("message", e => {
     sphere.position.y = m.wormhole.pos[1];
     scene.add(sphere);
     wormholes.push(sphere);
+  }
+  if (m.boss) {
+    if (!boss) {
+      var sphere = new THREE.Mesh(wormholegeometry, wormholematerial);
+      sphere.position.x = m.boss.pos[0];
+      sphere.position.y = m.boss.pos[1];
+      scene.add(sphere);
+      boss = sphere;
+    }
+    boss.position.x = m.boss.pos[0];
+    boss.position.y = m.boss.pos[1];
+  } else if (boss) {
+    scene.remove(boss);
+    boss = undefined;
   }
   if (m.players) {
     m.players.forEach((p: any) => {
@@ -262,43 +278,43 @@ window.addEventListener("contextmenu", e => {
 });
 window.addEventListener("keydown", e => {
   if (e.keyCode == 83) {
-    skey = true
-    send({ Split: rightclick||skey });
+    skey = true;
+    send({ Split: rightclick || skey });
   }
-  if (e.keyCode == 32) { 
+  if (e.keyCode == 32) {
     spacekey = true;
-    send({ Click: leftclick||spacekey });
+    send({ Click: leftclick || spacekey });
   }
 });
 window.addEventListener("keyup", e => {
   if (e.keyCode == 83) {
     skey = false;
-    send({ Split: rightclick||skey });
+    send({ Split: rightclick || skey });
   }
-  if (e.keyCode == 32) { 
-    spacekey = false
-    send({ Click: leftclick||spacekey });
+  if (e.keyCode == 32) {
+    spacekey = false;
+    send({ Click: leftclick || spacekey });
   }
 });
 window.addEventListener("mousedown", e => {
-  if (e.button==0){
+  if (e.button == 0) {
     leftclick = true;
-  send({ Click: leftclick||spacekey });
+    send({ Click: leftclick || spacekey });
   }
-  if (e.button==2){
+  if (e.button == 2) {
     rightclick = true;
-    send({ Split: rightclick||skey });
+    send({ Split: rightclick || skey });
   }
 });
 window.addEventListener("mouseup", e => {
-  if (e.button==0){
+  if (e.button == 0) {
     leftclick = false;
-    send({ Click: leftclick||spacekey });
-    }
-    if (e.button==2){
-      rightclick = false;
-      send({ Split: rightclick||skey });
-    }
+    send({ Click: leftclick || spacekey });
+  }
+  if (e.button == 2) {
+    rightclick = false;
+    send({ Split: rightclick || skey });
+  }
 });
 window.addEventListener("resize", () => {
   aspect = window.innerHeight / window.innerWidth;
