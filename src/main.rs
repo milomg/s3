@@ -127,6 +127,7 @@ fn main() -> Result<(), failure::Error> {
     server.do_send(server::NewWormhole(server2.clone()));
     // server2.do_send(server::NewWormhole(server.clone()));
 
+    let port = std::env::var("PORT").unwrap_or("8080".to_string());
     // Create Http server with WebSocket support
     HttpServer::new(move || {
         App::new()
@@ -135,14 +136,11 @@ fn main() -> Result<(), failure::Error> {
             // static resources
             .service(fs::Files::new("/", "client/dist/").index_file("index.html"))
     })
-    .bind(format!(
-        "0.0.0.0:{}",
-        std::env::var("PORT").unwrap_or("8080".to_string())
-    ))
+    .bind(format!("0.0.0.0:{}", port))
     .unwrap()
     .start();
 
-    println!("Started http server: http://localhost:8080");
+    println!("Started http server: http://localhost:{}", port);
     let _ = sys.run();
     Ok(())
 }

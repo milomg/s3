@@ -3,8 +3,8 @@ import { scene } from "./scene";
 
 export function addGround() {
   let rocks = ["crater", "craterLarge", "meteorFull", "meteorFullRound", "meteorHalf", "rocks", "rocksOre", "rocksSmall", "rocksSmallOre", "rocksTall"];
-  for (var i = 0; i < 10; i++) {
-    for (var j = 0; j < 10; j++) {
+  for (let i = 0; i < 10; i++) {
+    for (let j = 0; j < 10; j++) {
       let rock = models[rocks[Math.floor(Math.random() * rocks.length)]].clone();
 
       if (Math.random() > 0.17) continue;

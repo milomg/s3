@@ -1,3 +1,3 @@
 import * as THREE from "three";
 
-export var scene = new THREE.Scene();
+export let scene = new THREE.Scene();

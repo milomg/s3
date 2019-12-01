@@ -46,8 +46,11 @@ let healthMaterial = new THREE.MeshLambertMaterial({ color: 0x88ff00 });
 let manaMaterial = new THREE.MeshLambertMaterial({ color: 0x00bbff });
 let cooldownMaterial = new THREE.MeshLambertMaterial({ color: 0xbc7a51 });
 
-var wormholegeometry = new THREE.SphereGeometry(50);
-var wormholematerial = new THREE.MeshLambertMaterial({ color: 0xffff00 });
+let wormholegeometry = new THREE.SphereGeometry(50);
+let wormholematerial = new THREE.MeshLambertMaterial({ color: 0xffff00 });
+
+let bosshealthgeometry = new THREE.PlaneGeometry(100, 20);
+let bosshealthmaterial = new THREE.MeshLambertMaterial({ color: 0xff0000 });
 
 let renderer = new THREE.WebGLRenderer({ antialias: false, logarithmicDepthBuffer: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -56,7 +59,7 @@ document.body.appendChild(renderer.domElement);
 const sprites: { [key: string]: THREE.Object3D } = {};
 const bullets: { [key: string]: THREE.Mesh } = {};
 let wormholes: THREE.Mesh[] = [];
-let boss: THREE.Mesh | undefined = undefined;
+let boss: THREE.Object3D | undefined = undefined;
 
 let secure = (window.location.protocol.match(/s/g) || "").toString();
 let ws = new WebSocket(`ws${secure}://${window.location.host}/ws/`);
@@ -67,7 +70,6 @@ const classSelector = document.getElementById("class-selector");
 let classes = ["Quickshot", "Sniper"];
 let selected = 0;
 for (let i in classes) {
-  let c = classes[+i];
   const newDiv = document.createElement("img");
   newDiv.src = "/img/spaceCraft" + (+i * 2 + 1) + ".png";
   newDiv.classList.add("circle");
@@ -132,7 +134,7 @@ ws.addEventListener("message", e => {
     }
   }
   if (m.wormhole) {
-    var sphere = new THREE.Mesh(wormholegeometry, wormholematerial);
+    let sphere = new THREE.Mesh(wormholegeometry, wormholematerial);
     sphere.position.x = m.wormhole.pos[0];
     sphere.position.y = m.wormhole.pos[1];
     scene.add(sphere);
@@ -140,15 +142,24 @@ ws.addEventListener("message", e => {
   }
   if (m.boss) {
     if (!boss) {
-      var sphere = new THREE.Mesh(wormholegeometry, wormholematerial);
-      sphere.position.x = m.boss.pos[0];
-      sphere.position.y = m.boss.pos[1];
-      scene.add(sphere);
-      boss = sphere;
+      let obj = new THREE.Object3D();
+      let sphere = new THREE.Mesh(wormholegeometry, wormholematerial);
+      let health = new THREE.Mesh(bosshealthgeometry, bosshealthmaterial);
+
+      // sphere.position.x = m.boss.pos[0];
+      // sphere.position.y = m.boss.pos[1];
+      health.position.y += 70;
+      obj.add(sphere);
+      obj.add(health);
+      scene.add(obj);
+      boss = obj;
     }
+    boss.children[1].scale.x = m.boss.health / 255;
     boss.position.x = m.boss.pos[0];
     boss.position.y = m.boss.pos[1];
   } else if (boss) {
+    boss.remove(boss.children[1]);
+    boss.remove(boss.children[0]);
     scene.remove(boss);
     boss = undefined;
   }
@@ -263,10 +274,10 @@ ws.addEventListener("message", e => {
 function send(m: any) {
   if (opened) ws.send(JSON.stringify(m));
 }
-var rightclick = false;
-var leftclick = false;
-var spacekey = false;
-var skey = false;
+let rightclick = false;
+let leftclick = false;
+let spacekey = false;
+let skey = false;
 window.addEventListener("mousemove", e => {
   let a = Math.atan2(e.clientX - window.innerWidth / 2, window.innerHeight / 2 - e.clientY);
   if (a < 0) a += 2 * Math.PI;
