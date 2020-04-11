@@ -10,36 +10,6 @@ let camera = new THREE.OrthographicCamera(-view, view, view * aspect, -view * as
 camera.position.set(400, 400, 800);
 camera.lookAt(400, 400, 0);
 
-{
-  const near = 806;
-  const far = 890;
-  const color = 0x0000f;
-  scene.fog = new THREE.Fog(color, near, far);
-  scene.background = new THREE.Color(color);
-}
-
-{
-  let material = new THREE.LineBasicMaterial({ color: 0x0000ff });
-  let geometry = new THREE.Geometry();
-  geometry.vertices.push(new THREE.Vector3(0, 0, 0));
-  geometry.vertices.push(new THREE.Vector3(0, 800, 0));
-  geometry.vertices.push(new THREE.Vector3(800, 800, 0));
-  geometry.vertices.push(new THREE.Vector3(800, 0, 0));
-  geometry.vertices.push(new THREE.Vector3(0, 0, 0));
-  let line = new THREE.Line(geometry, material);
-  scene.add(line);
-}
-
-{
-  let light = new THREE.AmbientLight(0x404040); // soft white light
-  scene.add(light);
-}
-{
-  const light = new THREE.DirectionalLight(0xffffff - 0x404040, 1);
-  light.position.set(100, 100, 100);
-  scene.add(light);
-}
-
 let bulletGeometry = new THREE.ConeGeometry(3, 100, 3);
 let bulletMaterial = new THREE.MeshLambertMaterial({ color: 0x00aa00 });
 let healthMaterial = new THREE.MeshLambertMaterial({ color: 0x88ff00 });
@@ -47,8 +17,9 @@ let manaMaterial = new THREE.MeshLambertMaterial({ color: 0x00bbff });
 let cooldownMaterial = new THREE.MeshLambertMaterial({ color: 0xbc7a51 });
 
 let wormholegeometry = new THREE.SphereGeometry(50);
-let wormholematerial = new THREE.MeshLambertMaterial({ color: 0xffff00 });
+let wormholematerials = [0x00ff00, 0xffff00, 0xff0000].map((c) => new THREE.MeshLambertMaterial({ color: c }));
 
+let bossmaterial = new THREE.MeshLambertMaterial({ color: 0xffff00 });
 let bosshealthgeometry = new THREE.PlaneGeometry(100, 20);
 let bosshealthmaterial = new THREE.MeshLambertMaterial({ color: 0xff0000 });
 
@@ -85,7 +56,7 @@ for (let i in classes) {
   classSelector.appendChild(newDiv);
 }
 document.getElementById("username").focus();
-document.getElementById("username").addEventListener("keydown", e => {
+document.getElementById("username").addEventListener("keydown", (e) => {
   if (e.keyCode == 13 && opened) {
     send({ Spawn: [(document.getElementById("username") as HTMLInputElement).value, classes[selected]] });
     document.getElementById("login").style.display = "none";
@@ -96,7 +67,7 @@ ws.addEventListener("open", () => {
   document.getElementById("status").innerText = "Press enter to play";
 });
 ws.addEventListener("close", () => (opened = false));
-ws.addEventListener("message", e => {
+ws.addEventListener("message", (e) => {
   const m = JSON.parse(e.data);
   if (m.you) myid = m.you;
   if (m.death) {
@@ -134,7 +105,7 @@ ws.addEventListener("message", e => {
     }
   }
   if (m.wormhole) {
-    let sphere = new THREE.Mesh(wormholegeometry, wormholematerial);
+    let sphere = new THREE.Mesh(wormholegeometry, wormholematerials[m.wormhole.color]);
     sphere.position.x = m.wormhole.pos[0];
     sphere.position.y = m.wormhole.pos[1];
     scene.add(sphere);
@@ -143,7 +114,7 @@ ws.addEventListener("message", e => {
   if (m.boss) {
     if (!boss) {
       let obj = new THREE.Object3D();
-      let sphere = new THREE.Mesh(wormholegeometry, wormholematerial);
+      let sphere = new THREE.Mesh(wormholegeometry, bossmaterial);
       let health = new THREE.Mesh(bosshealthgeometry, bosshealthmaterial);
 
       // sphere.position.x = m.boss.pos[0];
@@ -278,16 +249,16 @@ let rightclick = false;
 let leftclick = false;
 let spacekey = false;
 let skey = false;
-window.addEventListener("mousemove", e => {
+window.addEventListener("mousemove", (e) => {
   let a = Math.atan2(e.clientX - window.innerWidth / 2, window.innerHeight / 2 - e.clientY);
   if (a < 0) a += 2 * Math.PI;
   send({ Angle: a });
 });
-window.addEventListener("contextmenu", e => {
+window.addEventListener("contextmenu", (e) => {
   e.preventDefault();
   return false;
 });
-window.addEventListener("keydown", e => {
+window.addEventListener("keydown", (e) => {
   if (e.keyCode == 83) {
     skey = true;
     send({ Split: rightclick || skey });
@@ -297,7 +268,7 @@ window.addEventListener("keydown", e => {
     send({ Click: leftclick || spacekey });
   }
 });
-window.addEventListener("keyup", e => {
+window.addEventListener("keyup", (e) => {
   if (e.keyCode == 83) {
     skey = false;
     send({ Split: rightclick || skey });
@@ -307,7 +278,7 @@ window.addEventListener("keyup", e => {
     send({ Click: leftclick || spacekey });
   }
 });
-window.addEventListener("mousedown", e => {
+window.addEventListener("mousedown", (e) => {
   if (e.button == 0) {
     leftclick = true;
     send({ Click: leftclick || spacekey });
@@ -317,7 +288,7 @@ window.addEventListener("mousedown", e => {
     send({ Split: rightclick || skey });
   }
 });
-window.addEventListener("mouseup", e => {
+window.addEventListener("mouseup", (e) => {
   if (e.button == 0) {
     leftclick = false;
     send({ Click: leftclick || spacekey });

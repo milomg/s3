@@ -18,12 +18,12 @@ export const models: { [key: string]: THREE.Object3D } = {
   rocksSmall: undefined,
   rocksSmallOre: undefined,
   rocksTall: undefined,
-  rocksTallOre: undefined
+  rocksTallOre: undefined,
 };
 {
   const fbxLoader = new GLTFLoader(manager);
   for (const key of Object.keys(models)) {
-    fbxLoader.load("gltf/" + key + ".glb", gltf => {
+    fbxLoader.load("gltf/" + key + ".glb", (gltf) => {
       models[key] = gltf.scene.children[0].children[0];
     });
   }

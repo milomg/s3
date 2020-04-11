@@ -8,6 +8,7 @@ use rand::prelude::*;
 use rstar::{RTree, RTreeObject, AABB};
 use serde_derive::{Deserialize, Serialize};
 use serde_json::json;
+use serde_repr::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
@@ -20,6 +21,7 @@ pub struct Connect {
 }
 
 #[derive(Message)]
+#[rtype(result = "()")]
 pub struct DecodedMessage {
     pub id: usize,
     pub m: ClientMessage,
@@ -27,21 +29,26 @@ pub struct DecodedMessage {
 
 /// Session is disconnected
 #[derive(Message)]
+#[rtype(result = "()")]
 pub struct Disconnect {
     pub id: usize,
 }
 
 #[derive(Message)]
+#[rtype(result = "()")]
 pub struct TransferClient(pub Addr<GameServer>);
 
 #[derive(Message)]
+#[rtype(result = "()")]
 pub struct Message(pub String);
 
 #[derive(Message)]
+#[rtype(result = "()")]
 struct Transfer(usize, Addr<WsGameSession>, Player);
 
 #[derive(Message)]
-pub struct NewWormhole(pub Addr<GameServer>);
+#[rtype(result = "()")]
+pub struct NewWormhole(pub Addr<GameServer>, pub BossType);
 
 #[derive(Deserialize, Serialize, Copy, Clone)]
 pub enum Classes {
@@ -77,6 +84,7 @@ struct ClientBullet {
 #[derive(Serialize)]
 struct ClientWormhole {
     pos: Vector2<f32>,
+    color: BossType,
 }
 #[derive(Serialize)]
 struct ClientBoss {
@@ -120,6 +128,7 @@ struct BossBullet {
 }
 struct Wormhole {
     pos: Vector2<f32>,
+    color: BossType,
     addr: Addr<GameServer>,
 }
 struct Boss {
@@ -127,6 +136,14 @@ struct Boss {
     health: u8,
     shot_time: Instant,
     shot_time2: Instant,
+}
+
+#[derive(Serialize_repr, Clone, Copy)]
+#[repr(u8)]
+pub enum BossType {
+    NoBoss,
+    NormalBoss,
+    HardcoreBoss,
 }
 
 impl Player {
@@ -163,7 +180,7 @@ impl Player {
                     for i in (10..=12).step_by(1) {
                         let f = i as f32;
                         bullets.push(Bullet {
-                            pos: self.pos.clone() - acopy * 35.0,
+                            pos: self.pos - acopy * 35.0,
                             vel: acc * (f) - acopy * (11.0 - f),
                             spawn: Instant::now(),
                             id: rng.gen::<usize>(),
@@ -171,7 +188,7 @@ impl Player {
                             class: self.class,
                         });
                         bullets.push(Bullet {
-                            pos: self.pos.clone() + acopy * 35.0,
+                            pos: self.pos + acopy * 35.0,
                             vel: acc * (f) + acopy * (11.0 - f),
                             spawn: Instant::now(),
                             id: rng.gen::<usize>(),
@@ -182,7 +199,7 @@ impl Player {
                 }
                 _ => {
                     bullets.push(Bullet {
-                        pos: self.pos.clone() + acopy * 35.0,
+                        pos: self.pos + acopy * 35.0,
                         vel: acc * 15.0 - acopy,
                         spawn: Instant::now(),
                         id: rng.gen::<usize>(),
@@ -190,7 +207,7 @@ impl Player {
                         class: self.class,
                     });
                     bullets.push(Bullet {
-                        pos: self.pos.clone() + acc * 35.0,
+                        pos: self.pos + acc * 35.0,
                         vel: acc * 15.0 - acc,
                         spawn: Instant::now(),
                         id: rng.gen::<usize>(),
@@ -198,7 +215,7 @@ impl Player {
                         class: self.class,
                     });
                     bullets.push(Bullet {
-                        pos: self.pos.clone() - acopy * 35.0,
+                        pos: self.pos - acopy * 35.0,
                         vel: acc * 15.0 + acopy,
                         spawn: Instant::now(),
                         id: rng.gen::<usize>(),
@@ -292,6 +309,7 @@ pub struct GameServer {
     sessions: HashMap<usize, Addr<WsGameSession>>,
     players: HashMap<usize, Player>,
     bullets: Vec<Bullet>,
+    boss_type: BossType,
     boss: Option<Boss>,
     boss_bullets: Vec<BossBullet>,
     rng: ThreadRng,
@@ -304,21 +322,26 @@ pub struct GameServer {
 }
 
 impl GameServer {
-    pub fn new() -> GameServer {
+    pub fn new(boss_type: BossType) -> GameServer {
         let mut rng = rand::thread_rng();
         GameServer {
             sessions: HashMap::new(),
             players: HashMap::new(),
             bullets: Vec::new(),
             wormholes: Vec::new(),
-            boss: Some(Boss {
-                pos: Vector2::new(rng.gen_range(0.0, 800.0), rng.gen_range(0.0, 800.0)),
-                health: 255,
-                shot_time: Instant::now(),
-                shot_time2: Instant::now(),
-            }),
+            boss: if let BossType::NormalBoss = boss_type {
+                Some(Boss {
+                    pos: Vector2::new(rng.gen_range(0.0, 800.0), rng.gen_range(0.0, 800.0)),
+                    health: 255,
+                    shot_time: Instant::now(),
+                    shot_time2: Instant::now(),
+                })
+            } else {
+                None
+            },
+            boss_type,
             boss_bullets: Vec::new(),
-            rng: rng,
+            rng,
             tick: Instant::now(),
             health_tick: Instant::now(),
             quickshot_mana: Instant::now(),
@@ -329,7 +352,7 @@ impl GameServer {
     /// Send message to all players
     fn send_message(&self, message: &str) {
         for addr in self.sessions.values() {
-            let _ = addr.do_send(Message(message.to_owned()));
+            addr.do_send(Message(message.to_owned()));
         }
     }
     fn tick(&self, ctx: &mut Context<Self>) {
@@ -347,7 +370,7 @@ impl GameServer {
         let qt = (self.quickshot_mana.elapsed().as_millis() / 24) as u8; // 2/3*1/16 of millis
         let st = (self.sniper_mana.elapsed().as_millis() / 16) as u8;
         if let Some(boss) = &mut self.boss {
-            if self.players.len() > 0 {
+            if !self.players.is_empty() {
                 let mut nearest_player = self.players.values().next().unwrap();
                 let mut nearest_dist = std::f32::MAX;
                 for p in self.players.values() {
@@ -376,34 +399,41 @@ impl GameServer {
                     });
                     boss.shot_time = Instant::now();
                 }
-                if boss.shot_time2.elapsed() > Duration::from_millis(250) {
-                    let velp = Vector2::new(vel.y, -vel.x);
-                    self.boss_bullets.push(BossBullet {
-                        pos: boss.pos - velp * 20.0,
-                        id: self.rng.gen::<usize>(),
-                        spawn: Instant::now(),
-                        vel: vel * 0.1,
-                    });
-                    self.boss_bullets.push(BossBullet {
-                        pos: boss.pos + velp * 20.0,
-                        id: self.rng.gen::<usize>(),
-                        spawn: Instant::now(),
-                        vel: vel * 0.1,
-                    });
-                    boss.shot_time2 = Instant::now();
+                if let BossType::HardcoreBoss = self.boss_type {
+                    if boss.shot_time2.elapsed() > Duration::from_millis(250) {
+                        let velp = Vector2::new(vel.y, -vel.x);
+                        self.boss_bullets.push(BossBullet {
+                            pos: boss.pos - velp * 20.0,
+                            id: self.rng.gen::<usize>(),
+                            spawn: Instant::now(),
+                            vel: vel * 0.1,
+                        });
+                        self.boss_bullets.push(BossBullet {
+                            pos: boss.pos + velp * 20.0,
+                            id: self.rng.gen::<usize>(),
+                            spawn: Instant::now(),
+                            vel: vel * 0.1,
+                        });
+                        boss.shot_time2 = Instant::now();
+                    }
                 }
             }
         } else {
-            if self.boss_dead.elapsed() > Duration::from_millis(3000) {
-                self.boss = Some(Boss {
-                    pos: Vector2::new(
-                        self.rng.gen_range(0.0, 800.0),
-                        self.rng.gen_range(0.0, 800.0),
-                    ),
-                    health: 255,
-                    shot_time: Instant::now(),
-                    shot_time2: Instant::now(),
-                })
+            match self.boss_type {
+                BossType::NoBoss => (),
+                _ => {
+                    if self.boss_dead.elapsed() > Duration::from_millis(3000) {
+                        self.boss = Some(Boss {
+                            pos: Vector2::new(
+                                self.rng.gen_range(0.0, 800.0),
+                                self.rng.gen_range(0.0, 800.0),
+                            ),
+                            health: 255,
+                            shot_time: Instant::now(),
+                            shot_time2: Instant::now(),
+                        })
+                    }
+                }
             }
         }
         for p in self.players.values_mut() {
@@ -475,11 +505,9 @@ impl GameServer {
                     id: b.id,
                 }))
                 .collect(),
-            boss: self.boss.as_ref().and_then(|b| {
-                Some(ClientBoss {
-                    pos: b.pos,
-                    health: b.health,
-                })
+            boss: self.boss.as_ref().map(|b| ClientBoss {
+                pos: b.pos,
+                health: b.health,
             }),
         };
         let serialized = ::serde_json::to_string(&playfield).unwrap();
@@ -623,7 +651,11 @@ impl Handler<Connect> for GameServer {
         for w in &self.wormholes {
             msg.addr.do_send(Message(
                 "{\"wormhole\":".to_owned()
-                    + &::serde_json::to_string(&ClientWormhole { pos: w.pos }).unwrap()
+                    + &::serde_json::to_string(&ClientWormhole {
+                        pos: w.pos,
+                        color: w.color,
+                    })
+                    .unwrap()
                     + "}",
             ));
         }
@@ -653,7 +685,11 @@ impl Handler<Transfer> for GameServer {
         for w in &self.wormholes {
             msg.1.do_send(Message(
                 "{\"wormhole\":".to_owned()
-                    + &::serde_json::to_string(&ClientWormhole { pos: w.pos }).unwrap()
+                    + &::serde_json::to_string(&ClientWormhole {
+                        pos: w.pos,
+                        color: w.color,
+                    })
+                    .unwrap()
                     + "}",
             ));
         }
@@ -670,13 +706,14 @@ impl Handler<NewWormhole> for GameServer {
         let pos = self.rng.gen_range(0.0, 800.0);
         let pos = Vector2::new(if b2 { b1 } else { pos }, if b2 { pos } else { b1 });
         self.wormholes.push(Wormhole {
-            pos: pos,
+            pos,
             addr: msg.0,
+            color: msg.1,
         });
 
         self.send_message(
             &("{\"wormhole\":".to_owned()
-                + &::serde_json::to_string(&ClientWormhole { pos: pos }).unwrap()
+                + &::serde_json::to_string(&ClientWormhole { pos, color: msg.1 }).unwrap()
                 + "}"),
         )
     }
@@ -722,14 +759,12 @@ impl Handler<DecodedMessage> for GameServer {
                 split: false,
             };
             self.players.insert(msg.id, p);
-        } else {
-            if let Some(p) = self.players.get_mut(&msg.id) {
-                match msg.m {
-                    ClientMessage::Click(b) => p.mouse = b,
-                    ClientMessage::Split(b) => p.split = b,
-                    ClientMessage::Angle(a) => p.angle = a,
-                    ClientMessage::Spawn(_, _) => unreachable!(),
-                }
+        } else if let Some(p) = self.players.get_mut(&msg.id) {
+            match msg.m {
+                ClientMessage::Click(b) => p.mouse = b,
+                ClientMessage::Split(b) => p.split = b,
+                ClientMessage::Angle(a) => p.angle = a,
+                ClientMessage::Spawn(_, _) => unreachable!(),
             }
         }
     }

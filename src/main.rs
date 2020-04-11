@@ -13,7 +13,7 @@ use server::{
 };
 
 /// Entry point for our route
-fn game_route(
+async fn game_route(
     req: HttpRequest,
     stream: web::Payload,
     srv: web::Data<Addr<server::GameServer>>,
@@ -48,7 +48,7 @@ impl Actor for WsGameSession {
         // routes within application
         let addr: Addr<_> = ctx.address();
         self.addr
-            .send(Connect { addr: addr })
+            .send(Connect { addr })
             .into_actor(self)
             .then(|res, act, ctx| {
                 match res {
@@ -65,7 +65,7 @@ impl Actor for WsGameSession {
                     // something is wrong with game server
                     _ => ctx.stop(),
                 }
-                fut::ok(())
+                fut::ready(())
             })
             .wait(ctx);
     }
@@ -95,12 +95,12 @@ impl Handler<TransferClient> for WsGameSession {
 }
 
 /// WebSocket message handler
-impl StreamHandler<ws::Message, ws::ProtocolError> for WsGameSession {
-    fn handle(&mut self, msg: ws::Message, ctx: &mut Self::Context) {
+impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsGameSession {
+    fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         match msg {
-            ws::Message::Ping(msg) => ctx.pong(&msg),
-            ws::Message::Pong(_) => println!("Ping"),
-            ws::Message::Text(text) => {
+            Ok(ws::Message::Ping(msg)) => ctx.pong(&msg),
+            Ok(ws::Message::Pong(_)) => println!("Ping"),
+            Ok(ws::Message::Text(text)) => {
                 // All the client sends are key messages so we assume that the message is a key message
                 if let Ok(m) = serde_json::from_str::<ClientMessage>(text.trim()) {
                     self.addr.do_send(DecodedMessage { id: self.id, m });
@@ -108,39 +108,44 @@ impl StreamHandler<ws::Message, ws::ProtocolError> for WsGameSession {
 
                 // send message to game server
             }
-            ws::Message::Binary(_) => println!("Unexpected binary"),
-            ws::Message::Close(_) => {
+            Ok(ws::Message::Binary(_)) => println!("Unexpected binary"),
+            Ok(ws::Message::Close(_)) => {
                 ctx.stop();
             }
-            ws::Message::Nop => (),
+            _ => (),
         }
     }
 }
 
-fn main() -> Result<(), failure::Error> {
-    let sys = actix::System::new("ghist");
+#[actix_rt::main]
+async fn main() -> std::io::Result<()> {
+    // let sys = actix::System::new("ghist");
 
     // Start game server actor in separate thread
-    let server = GameServer::new().start();
+    let homeserver = GameServer::new(server::BossType::NoBoss).start();
 
-    let server2 = GameServer::new().start();
-    server.do_send(server::NewWormhole(server2.clone()));
-    // server2.do_send(server::NewWormhole(server.clone()));
+    let bossserver = GameServer::new(server::BossType::NormalBoss).start();
+    let bossserver2 = GameServer::new(server::BossType::HardcoreBoss).start();
+    // Create a wormhole to the new server
+    homeserver.do_send(server::NewWormhole(
+        bossserver.clone(),
+        server::BossType::NormalBoss,
+    ));
+    homeserver.do_send(server::NewWormhole(
+        bossserver2.clone(),
+        server::BossType::HardcoreBoss,
+    ));
 
-    let port = std::env::var("PORT").unwrap_or("8080".to_string());
+    let port = std::env::var("PORT").unwrap_or("8080".into());
     // Create Http server with WebSocket support
     HttpServer::new(move || {
         App::new()
-            .data(server.clone())
+            .data(homeserver.clone())
             .service(web::resource("/ws/").to(game_route))
             // static resources
             .service(fs::Files::new("/", "client/dist/").index_file("index.html"))
     })
-    .bind(format!("0.0.0.0:{}", port))
-    .unwrap()
-    .start();
-
-    println!("Started http server: http://localhost:{}", port);
-    let _ = sys.run();
-    Ok(())
+    .bind(format!("0.0.0.0:{}", port))?
+    .run()
+    .await
 }

@@ -1,3 +1,5 @@
 # s3
 
-Quickly recoded [daud.io](http://daud.io) with rooms, 3d graphics, mana, no flocking, etc.
+Redesigned [daud.io](http://daud.io) with wormholes, 3d graphics, mana, etc.
+
+Run `cargo run` to build and run the server, and `npm run build` to build the client
