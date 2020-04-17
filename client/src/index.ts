@@ -1,7 +1,13 @@
 import * as THREE from "three";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass";
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass";
 import { models } from "./loader";
 import { scene } from "./scene";
 import { createText } from "./text";
+import { ws } from "./connection";
+import "./controls";
 
 let aspect = window.innerHeight / window.innerWidth;
 
@@ -10,64 +16,99 @@ let camera = new THREE.OrthographicCamera(-view, view, view * aspect, -view * as
 camera.position.set(400, 400, 800);
 camera.lookAt(400, 400, 0);
 
-let bulletGeometry = new THREE.ConeGeometry(3, 100, 3);
-let bulletMaterial = new THREE.MeshLambertMaterial({ color: 0x00aa00 });
-let healthMaterial = new THREE.MeshLambertMaterial({ color: 0x88ff00 });
+let bulletGeometry = new THREE.ConeBufferGeometry(1.5, 50, 4);
+let bulletMaterial = new THREE.MeshLambertMaterial({ color: 0x81e1fc });
+let healthMaterial = new THREE.MeshLambertMaterial({ color: 0x3fab00 });
 let manaMaterial = new THREE.MeshLambertMaterial({ color: 0x00bbff });
-let cooldownMaterial = new THREE.MeshLambertMaterial({ color: 0xbc7a51 });
+let cooldownMaterial = new THREE.MeshLambertMaterial({ color: 0x694129 });
 
-let wormholegeometry = new THREE.SphereGeometry(50);
+let wormholegeometry = new THREE.IcosahedronBufferGeometry(50, 3);
 let wormholematerials = [0x00ff00, 0xffff00, 0xff0000].map((c) => new THREE.MeshLambertMaterial({ color: c }));
 
 let bossmaterial = new THREE.MeshLambertMaterial({ color: 0xffff00 });
-let bosshealthgeometry = new THREE.PlaneGeometry(100, 20);
+let bosshealthgeometry = new THREE.PlaneBufferGeometry(100, 20);
 let bosshealthmaterial = new THREE.MeshLambertMaterial({ color: 0xff0000 });
 
-let renderer = new THREE.WebGLRenderer({ antialias: false, logarithmicDepthBuffer: true });
+let renderer = new THREE.WebGLRenderer({ logarithmicDepthBuffer: true });
+renderer.setPixelRatio(window.devicePixelRatio || 1);
+renderer.toneMapping = THREE.NoToneMapping;
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
+
+let bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.5, 0);
+let renderPass = new RenderPass(scene, camera);
+
+let bloomComposer = new EffectComposer(renderer);
+bloomComposer.renderToScreen = false;
+bloomComposer.addPass(renderPass);
+bloomComposer.addPass(bloomPass);
 
 const sprites: { [key: string]: THREE.Object3D } = {};
 const bullets: { [key: string]: THREE.Mesh } = {};
 let wormholes: THREE.Mesh[] = [];
 let boss: THREE.Object3D | undefined = undefined;
 
-let secure = (window.location.protocol.match(/s/g) || "").toString();
-let ws = new WebSocket(`ws${secure}://${window.location.host}/ws/`);
-let opened = false;
+let uiElements: THREE.Mesh[] = [];
+let uiMaterials: (THREE.Material | THREE.Material[])[] = [];
+let darkMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+
+function darkenUI() {
+  for (let el in uiElements) {
+    uiMaterials[el] = uiElements[el].material;
+    uiElements[el].material = darkMaterial;
+  }
+}
+
+function restoreUI() {
+  for (let el in uiElements) {
+    uiElements[el].material = uiMaterials[el];
+    uiMaterials[el] = undefined;
+  }
+}
+
+var finalPass = new ShaderPass(
+  new THREE.ShaderMaterial({
+    uniforms: {
+      baseTexture: { value: null },
+      bloomTexture: { value: bloomComposer.renderTarget2.texture },
+    },
+    vertexShader: `varying vec2 vUv;
+
+    void main() {
+
+      vUv = uv;
+
+      gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+
+    }`,
+    fragmentShader: `uniform sampler2D baseTexture;
+    uniform sampler2D bloomTexture;
+
+    varying vec2 vUv;
+
+    vec4 getTexture( sampler2D texelToLinearTexture ) {
+
+      return mapTexelToLinear( texture2D( texelToLinearTexture , vUv ) );
+
+    }
+
+    void main() {
+
+      gl_FragColor = ( getTexture( baseTexture ) + vec4( 1.0 ) * getTexture( bloomTexture ) );
+
+    }`,
+    defines: {},
+  }),
+  "baseTexture"
+);
+finalPass.needsSwap = true;
+
+var finalComposer = new EffectComposer(renderer);
+finalComposer.addPass(renderPass);
+finalComposer.addPass(finalPass);
 let myid = 0;
 
-const classSelector = document.getElementById("class-selector");
-let classes = ["Quickshot", "Sniper"];
-let selected = 0;
-for (let i in classes) {
-  const newDiv = document.createElement("img");
-  newDiv.src = "/img/spaceCraft" + (+i * 2 + 1) + ".png";
-  newDiv.classList.add("circle");
-  if (+i == selected) newDiv.classList.add("selected");
-  newDiv.addEventListener("click", () => {
-    let els = document.querySelectorAll(".selected");
-    for (let j = 0; j < els.length; j++) {
-      els[j].classList.remove("selected");
-    }
-    selected = +i;
-    newDiv.classList.add("selected");
-  });
-  classSelector.appendChild(newDiv);
-}
-document.getElementById("username").focus();
-document.getElementById("username").addEventListener("keydown", (e) => {
-  if (e.keyCode == 13 && opened) {
-    send({ Spawn: [(document.getElementById("username") as HTMLInputElement).value, classes[selected]] });
-    document.getElementById("login").style.display = "none";
-  }
-});
-ws.addEventListener("open", () => {
-  opened = true;
-  document.getElementById("status").innerText = "Press enter to play";
-});
-ws.addEventListener("close", () => (opened = false));
-ws.addEventListener("message", (e) => {
+ws.onmessage = (e) => {
   const m = JSON.parse(e.data);
   if (m.you) myid = m.you;
   if (m.death) {
@@ -117,8 +158,6 @@ ws.addEventListener("message", (e) => {
       let sphere = new THREE.Mesh(wormholegeometry, bossmaterial);
       let health = new THREE.Mesh(bosshealthgeometry, bosshealthmaterial);
 
-      // sphere.position.x = m.boss.pos[0];
-      // sphere.position.y = m.boss.pos[1];
       health.position.y += 70;
       obj.add(sphere);
       obj.add(health);
@@ -151,25 +190,27 @@ ws.addEventListener("message", (e) => {
           container.add(mesh);
         }
         {
-          let ring = new THREE.RingGeometry(68, 80, 10, 8, Math.PI, Math.PI / 2);
+          let ring = new THREE.RingBufferGeometry(68, 80, 10, 1, Math.PI, Math.PI / 2);
           let mesh = new THREE.Mesh(ring, healthMaterial);
           mesh.position.set(0, 0, 0);
           container.add(mesh);
         }
         {
-          let ring = new THREE.RingGeometry(68, 80, 10, 8, 1.5 * Math.PI, Math.PI / 2);
+          let ring = new THREE.RingBufferGeometry(68, 80, 10, 1, 1.5 * Math.PI, Math.PI / 2);
           let mesh = new THREE.Mesh(ring, manaMaterial);
           mesh.position.set(0, 0, 0);
           container.add(mesh);
         }
         {
-          let ring = new THREE.RingGeometry(80, 92, 10, 8, (4 / 3) * Math.PI, Math.PI / 3);
+          let ring = new THREE.RingBufferGeometry(80, 92, 10, 1, (4 / 3) * Math.PI, Math.PI / 3);
           let mesh = new THREE.Mesh(ring, cooldownMaterial);
           mesh.position.set(0, 0, 0);
           container.add(mesh);
         }
         if (p.name) {
           let text = createText(p.name, 30);
+          uiElements.push(text);
+          uiMaterials.push(undefined);
           text.position.y = 87;
           text.position.z = 1;
           container.add(text);
@@ -185,18 +226,14 @@ ws.addEventListener("message", (e) => {
       sprites[p.id].position.y = p.pos[1];
 
       {
-        let ring = new THREE.RingGeometry(68, 80, 10, 8, Math.PI * (1.5 - p.health / 510), (Math.PI * p.health) / 510);
-        let geometry = (sprites[p.id].children[1] as THREE.Mesh).geometry as THREE.Geometry;
-        geometry.vertices = ring.vertices;
-        geometry.verticesNeedUpdate = true;
-        geometry.elementsNeedUpdate = true;
+        let ring = new THREE.RingBufferGeometry(68, 80, 10, 1, Math.PI * (1.5 - p.health / 510), (Math.PI * p.health) / 510);
+        (sprites[p.id].children[1] as THREE.Mesh).geometry.dispose();
+        (sprites[p.id].children[1] as THREE.Mesh).geometry = ring;
       }
       {
-        let ring = new THREE.RingGeometry(68, 80, 10, 8, 1.5 * Math.PI, (Math.PI * p.mana) / 510);
-        let geometry = (sprites[p.id].children[2] as THREE.Mesh).geometry as THREE.Geometry;
-        geometry.vertices = ring.vertices;
-        geometry.verticesNeedUpdate = true;
-        geometry.elementsNeedUpdate = true;
+        let ring = new THREE.RingBufferGeometry(68, 80, 10, 1, 1.5 * Math.PI, (Math.PI * p.mana) / 510);
+        (sprites[p.id].children[2] as THREE.Mesh).geometry.dispose();
+        (sprites[p.id].children[2] as THREE.Mesh).geometry = ring;
       }
       {
         let cooldown = p.class == "Quickshot" ? 750 : 1000;
@@ -205,11 +242,9 @@ ws.addEventListener("message", (e) => {
           sprites[p.id].children[3].visible = false;
         } else {
           sprites[p.id].children[3].visible = true;
-          let ring = new THREE.RingGeometry(80, 92, 10, 8, (4 / 3) * Math.PI, ((Math.PI / 3) * timeDiff) / cooldown);
-          let geometry = (sprites[p.id].children[3] as THREE.Mesh).geometry as THREE.Geometry;
-          geometry.vertices = ring.vertices;
-          geometry.verticesNeedUpdate = true;
-          geometry.elementsNeedUpdate = true;
+          let ring = new THREE.RingBufferGeometry(80, 92, 10, 1, (4 / 3) * Math.PI, ((Math.PI / 3) * timeDiff) / cooldown);
+          (sprites[p.id].children[3] as THREE.Mesh).geometry.dispose();
+          (sprites[p.id].children[3] as THREE.Mesh).geometry = ring;
         }
       }
       sprites[p.id].children[0].rotation.y = -p.angle;
@@ -239,65 +274,14 @@ ws.addEventListener("message", (e) => {
       }
     }
   }
-  renderer.render(scene, camera);
-});
 
-function send(m: any) {
-  if (opened) ws.send(JSON.stringify(m));
-}
-let rightclick = false;
-let leftclick = false;
-let spacekey = false;
-let skey = false;
-window.addEventListener("mousemove", (e) => {
-  let a = Math.atan2(e.clientX - window.innerWidth / 2, window.innerHeight / 2 - e.clientY);
-  if (a < 0) a += 2 * Math.PI;
-  send({ Angle: a });
-});
-window.addEventListener("contextmenu", (e) => {
-  e.preventDefault();
-  return false;
-});
-window.addEventListener("keydown", (e) => {
-  if (e.keyCode == 83) {
-    skey = true;
-    send({ Split: rightclick || skey });
-  }
-  if (e.keyCode == 32) {
-    spacekey = true;
-    send({ Click: leftclick || spacekey });
-  }
-});
-window.addEventListener("keyup", (e) => {
-  if (e.keyCode == 83) {
-    skey = false;
-    send({ Split: rightclick || skey });
-  }
-  if (e.keyCode == 32) {
-    spacekey = false;
-    send({ Click: leftclick || spacekey });
-  }
-});
-window.addEventListener("mousedown", (e) => {
-  if (e.button == 0) {
-    leftclick = true;
-    send({ Click: leftclick || spacekey });
-  }
-  if (e.button == 2) {
-    rightclick = true;
-    send({ Split: rightclick || skey });
-  }
-});
-window.addEventListener("mouseup", (e) => {
-  if (e.button == 0) {
-    leftclick = false;
-    send({ Click: leftclick || spacekey });
-  }
-  if (e.button == 2) {
-    rightclick = false;
-    send({ Split: rightclick || skey });
-  }
-});
+  darkenUI();
+  bloomComposer.render();
+  restoreUI();
+
+  finalComposer.render();
+};
+
 window.addEventListener("resize", () => {
   aspect = window.innerHeight / window.innerWidth;
   camera.top = view * aspect;

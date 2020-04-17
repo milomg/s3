@@ -6,6 +6,9 @@ use na::Vector2;
 use nalgebra as na;
 use serde_json::json;
 
+mod boss;
+mod bullet;
+mod player;
 mod server;
 
 use server::{
@@ -122,27 +125,23 @@ async fn main() -> std::io::Result<()> {
     // let sys = actix::System::new("ghist");
 
     // Start game server actor in separate thread
-    let homeserver = GameServer::new(server::BossType::NoBoss).start();
+    let homeserver = GameServer::new(None, None).start();
 
-    let bossserver = GameServer::new(server::BossType::NormalBoss).start();
-    let bossserver2 = GameServer::new(server::BossType::HardcoreBoss).start();
+    let bossserver =
+        GameServer::new(Some(boss::BossType::NormalBoss), Some(homeserver.clone())).start();
+    let bossserver2 =
+        GameServer::new(Some(boss::BossType::HardcoreBoss), Some(homeserver.clone())).start();
     // Create a wormhole to the new server
-    homeserver.do_send(server::NewWormhole(
-        bossserver.clone(),
-        server::BossType::NormalBoss,
-    ));
-    homeserver.do_send(server::NewWormhole(
-        bossserver2.clone(),
-        server::BossType::HardcoreBoss,
-    ));
+    homeserver.do_send(server::NewWormhole(bossserver.clone(), 1));
+    homeserver.do_send(server::NewWormhole(bossserver2.clone(), 2));
 
-    let port = std::env::var("PORT").unwrap_or("8080".into());
+    let port = std::env::var("PORT").unwrap_or_else(|_| "8080".into());
+    println!("Starting a server on http://localhost:{}", port);
     // Create Http server with WebSocket support
     HttpServer::new(move || {
         App::new()
             .data(homeserver.clone())
             .service(web::resource("/ws/").to(game_route))
-            // static resources
             .service(fs::Files::new("/", "client/dist/").index_file("index.html"))
     })
     .bind(format!("0.0.0.0:{}", port))?
