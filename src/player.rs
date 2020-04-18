@@ -4,6 +4,7 @@ use nalgebra as na;
 use rand::prelude::*;
 use rstar::{RTreeObject, AABB};
 use serde_derive::{Deserialize, Serialize};
+use std::f32::consts::PI;
 use std::time::{Duration, Instant};
 
 #[derive(Deserialize, Serialize, Copy, Clone)]
@@ -16,7 +17,7 @@ pub struct Player {
     pub id: usize,
     pub vel: Vector2<f32>,
     pub pos: Vector2<f32>,
-    pub angle: f32,
+    pub target: Vector2<f32>,
     pub health: u8,
     pub mana: u8,
     pub mouse: bool,
@@ -41,10 +42,19 @@ impl<'a> RTreeObject for &'a Player {
     }
 }
 
+fn sunflower(n: u8) -> impl Iterator<Item = Vector2<f32>> {
+    let golden = PI * (3.0 - (5.0f32).sqrt());
+    (0..n).map(move |k| {
+        let r = (k as f32).sqrt() / (n as f32).sqrt();
+        let theta = (k as f32) * golden;
+        Vector2::new(r * theta.cos(), r * theta.sin())
+    })
+}
+
 impl Player {
     pub const RADIUS: f32 = 35.0;
     pub fn tick(&mut self, dt: f32, rng: &mut ThreadRng, bullets: &mut Vec<Bullet>) {
-        let acc = Vector2::new(self.angle.sin(), self.angle.cos());
+        let acc = self.target.try_normalize(1.0e-6).unwrap_or_else(Vector2::y);
         if self.split && (self.split_time.elapsed() > Duration::from_millis(600)) && self.mana > 100
         {
             self.split_time = Instant::now();
@@ -68,23 +78,15 @@ impl Player {
                     Classes::Sniper => 1000,
                 })
         {
-            let acopy = Vector2::new(acc.y, -acc.x);
-
             match self.class {
                 Classes::Quickshot => {
-                    for i in (10..=12).step_by(1) {
-                        let f = i as f32;
+                    let btarget = self.pos + acc * self.target.magnitude().max(100.0);
+                    for pos in sunflower(20) {
+                        let bpos = self.pos + 50.0 * pos;
+                        let rvec = Vector2::new(rng.gen_range(-8.0, 8.0), rng.gen_range(-8.0, 8.0));
                         bullets.push(Bullet {
-                            pos: self.pos - acopy * 35.0,
-                            vel: acc * (f) - acopy * (11.0 - f),
-                            spawn: Instant::now(),
-                            id: rng.gen::<usize>(),
-                            owner: self.id,
-                            class: self.class,
-                        });
-                        bullets.push(Bullet {
-                            pos: self.pos + acopy * 35.0,
-                            vel: acc * (f) + acopy * (11.0 - f),
+                            pos: bpos,
+                            vel: (btarget - bpos + rvec).normalize() * 15.0,
                             spawn: Instant::now(),
                             id: rng.gen::<usize>(),
                             owner: self.id,
@@ -93,30 +95,19 @@ impl Player {
                     }
                 }
                 _ => {
-                    bullets.push(Bullet {
-                        pos: self.pos + acopy * 35.0,
-                        vel: acc * 15.0 - acopy,
-                        spawn: Instant::now(),
-                        id: rng.gen::<usize>(),
-                        owner: self.id,
-                        class: self.class,
-                    });
-                    bullets.push(Bullet {
-                        pos: self.pos + acc * 35.0,
-                        vel: acc * 15.0 - acc,
-                        spawn: Instant::now(),
-                        id: rng.gen::<usize>(),
-                        owner: self.id,
-                        class: self.class,
-                    });
-                    bullets.push(Bullet {
-                        pos: self.pos - acopy * 35.0,
-                        vel: acc * 15.0 + acopy,
-                        spawn: Instant::now(),
-                        id: rng.gen::<usize>(),
-                        owner: self.id,
-                        class: self.class,
-                    });
+                    let wide = self.target.magnitude().max(100.0);
+                    for i in -10..=10 {
+                        let angle = self.target.y.atan2(self.target.x) + i as f32 / 8.0;
+                        let circle = Vector2::new(angle.cos(), angle.sin());
+                        bullets.push(Bullet {
+                            pos: self.pos + circle * 50.0,
+                            vel: (acc + circle * (wide - 100.0) / 200.0).normalize() * 15.0,
+                            spawn: Instant::now(),
+                            id: rng.gen::<usize>(),
+                            owner: self.id,
+                            class: self.class,
+                        });
+                    }
                 }
             }
 

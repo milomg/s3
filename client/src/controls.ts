@@ -1,5 +1,6 @@
+import * as THREE from "three";
 import { send, opened } from "./connection";
-
+import { camera } from "./scene";
 const classSelector = document.getElementById("class-selector");
 let classes = ["Quickshot", "Sniper"];
 let selected = 0;
@@ -32,10 +33,15 @@ let rightclick = false;
 let leftclick = false;
 let spacekey = false;
 let skey = false;
+
+var vec = new THREE.Vector3(); // create once and reuse
 window.addEventListener("mousemove", (e) => {
-  let a = Math.atan2(e.clientX - window.innerWidth / 2, window.innerHeight / 2 - e.clientY);
-  if (a < 0) a += 2 * Math.PI;
-  send({ Angle: a });
+  vec
+    .set((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1, 0)
+    .unproject(camera)
+    .sub(camera.position);
+
+  send({ Target: [vec.x, vec.y] });
 });
 window.addEventListener("contextmenu", (e) => {
   e.preventDefault();

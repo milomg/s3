@@ -31,3 +31,23 @@ export let scene = new THREE.Scene();
   light.position.set(100, 100, 100);
   scene.add(light);
 }
+
+let aspect = window.innerHeight / window.innerWidth;
+let view = 800;
+export let camera = new THREE.OrthographicCamera(-view, view, view * aspect, -view * aspect, 1, 1000);
+camera.position.set(400, 400, 800);
+camera.lookAt(400, 400, 0);
+
+export let renderer = new THREE.WebGLRenderer({ logarithmicDepthBuffer: true });
+renderer.setPixelRatio(window.devicePixelRatio || 1);
+renderer.toneMapping = THREE.NoToneMapping;
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+window.addEventListener("resize", () => {
+  aspect = window.innerHeight / window.innerWidth;
+  camera.top = view * aspect;
+  camera.bottom = -view * aspect;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});

@@ -56,7 +56,7 @@ pub struct NewWormhole(pub Addr<GameServer>, pub u8);
 #[derive(Deserialize)]
 pub enum ClientMessage {
     Spawn(String, Classes),
-    Angle(f32),
+    Target(Vector2<f32>),
     Click(bool),
     Split(bool),
     Join(bool),
@@ -257,7 +257,7 @@ impl GameServer {
                 .map(|(_, p)| ClientPlayer {
                     id: p.id,
                     pos: p.pos,
-                    angle: p.angle,
+                    angle: p.target.x.atan2(p.target.y),
                     health: p.health,
                     mana: p.mana,
                     class: p.class,
@@ -360,21 +360,20 @@ impl GameServer {
         let mut delete_bullets = HashSet::new();
         let mut delete_boss_bullets = HashSet::new();
         if let Some(boss) = &mut self.boss {
-            let intersecting = dt.locate_in_envelope_intersecting(&(&*boss).envelope());
-            for intersect in intersecting {
-                if (intersect.pos - boss.pos).magnitude()
-                    <= (Boss::RADIUS + Bullet::RADIUS).powf(2.0)
-                {
-                    boss.health = boss.health.saturating_sub(match intersect.class {
-                        Classes::Sniper => 30,
-                        Classes::Quickshot => 15,
-                    });
+            if boss.health > 0 {
+                let intersecting = dt.locate_in_envelope_intersecting(&(&*boss).envelope());
+                for intersect in intersecting {
+                    if (intersect.pos - boss.pos).magnitude()
+                        <= (Boss::RADIUS + Bullet::RADIUS).powf(2.0)
+                    {
+                        boss.health = boss.health.saturating_sub(15);
 
-                    delete_bullets.insert(intersect.id);
+                        delete_bullets.insert(intersect.id);
+                    }
                 }
-            }
-            if boss.health == 0 {
-                self.boss_dead = Instant::now();
+                if boss.health == 0 {
+                    self.boss_dead = Instant::now();
+                }
             }
         }
         for (i, p) in &self.players {
@@ -385,10 +384,7 @@ impl GameServer {
                         && (intersect.pos - p.pos).magnitude()
                             <= (Player::RADIUS + Bullet::RADIUS).powf(2.0)
                     {
-                        *health_map.entry(*i).or_insert(0) += match intersect.class {
-                            Classes::Sniper => 60,
-                            Classes::Quickshot => 30,
-                        };
+                        *health_map.entry(*i).or_insert(0) += 30;
 
                         delete_bullets.insert(intersect.id);
                     }
@@ -399,10 +395,7 @@ impl GameServer {
                 if (intersect.pos - p.pos).magnitude()
                     <= (Player::RADIUS + BossBullet::RADIUS).powf(2.0)
                 {
-                    *health_map.entry(*i).or_insert(0) += match p.class {
-                        Classes::Sniper => 60,
-                        Classes::Quickshot => 30,
-                    };
+                    *health_map.entry(*i).or_insert(0) += 60;
 
                     delete_boss_bullets.insert(intersect.id);
                 }
@@ -562,7 +555,7 @@ impl Handler<DecodedMessage> for GameServer {
                 shot_time: Instant::now() - Duration::from_secs(2),
                 split_time: Instant::now() - Duration::from_secs(2),
                 escape_time: None,
-                angle: 0.0,
+                target: Vector2::new(0.0, 0.0),
                 health: 255,
                 mana: 255,
                 name: n,
@@ -576,11 +569,11 @@ impl Handler<DecodedMessage> for GameServer {
             match msg.m {
                 ClientMessage::Click(b) => p.mouse = b,
                 ClientMessage::Split(b) => p.split = b,
-                ClientMessage::Angle(a) => p.angle = a,
+                ClientMessage::Target(v) => p.target = v,
                 ClientMessage::Escape(b) => {
                     if !b {
                         p.escape_time = None
-                    } else if let None = p.escape_time {
+                    } else if p.escape_time.is_none() {
                         p.escape_time = Some(Instant::now())
                     }
                 }

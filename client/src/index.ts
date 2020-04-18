@@ -4,17 +4,10 @@ import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPa
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass";
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass";
 import { models } from "./loader";
-import { scene } from "./scene";
+import { scene, renderer, camera } from "./scene";
 import { createText } from "./text";
 import { ws } from "./connection";
 import "./controls";
-
-let aspect = window.innerHeight / window.innerWidth;
-
-let view = 800;
-let camera = new THREE.OrthographicCamera(-view, view, view * aspect, -view * aspect, 1, 1000);
-camera.position.set(400, 400, 800);
-camera.lookAt(400, 400, 0);
 
 let bulletGeometry = new THREE.ConeBufferGeometry(1.5, 50, 4);
 let bulletMaterial = new THREE.MeshLambertMaterial({ color: 0x81e1fc });
@@ -28,12 +21,6 @@ let wormholematerials = [0x00ff00, 0xffff00, 0xff0000].map((c) => new THREE.Mesh
 let bossmaterial = new THREE.MeshLambertMaterial({ color: 0xffff00 });
 let bosshealthgeometry = new THREE.PlaneBufferGeometry(100, 20);
 let bosshealthmaterial = new THREE.MeshLambertMaterial({ color: 0xff0000 });
-
-let renderer = new THREE.WebGLRenderer({ logarithmicDepthBuffer: true });
-renderer.setPixelRatio(window.devicePixelRatio || 1);
-renderer.toneMapping = THREE.NoToneMapping;
-renderer.setSize(window.innerWidth, window.innerHeight);
-document.body.appendChild(renderer.domElement);
 
 let bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.5, 0);
 let renderPass = new RenderPass(scene, camera);
@@ -107,6 +94,17 @@ var finalComposer = new EffectComposer(renderer);
 finalComposer.addPass(renderPass);
 finalComposer.addPass(finalPass);
 let myid = 0;
+
+function draw() {
+  darkenUI();
+  bloomComposer.render();
+  restoreUI();
+
+  finalComposer.render();
+
+  window.requestAnimationFrame(draw);
+}
+draw();
 
 ws.onmessage = (e) => {
   const m = JSON.parse(e.data);
@@ -274,18 +272,4 @@ ws.onmessage = (e) => {
       }
     }
   }
-
-  darkenUI();
-  bloomComposer.render();
-  restoreUI();
-
-  finalComposer.render();
 };
-
-window.addEventListener("resize", () => {
-  aspect = window.innerHeight / window.innerWidth;
-  camera.top = view * aspect;
-  camera.bottom = -view * aspect;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
