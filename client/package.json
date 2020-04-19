@@ -25,7 +25,9 @@
     "webpack-cli": "^3.3.11"
   },
   "dependencies": {
+    "@types/stats.js": "^0.17.0",
     "@types/three": "^0.103.2",
+    "stats.js": "^0.17.0",
     "three": "^0.115.0"
   }
 }

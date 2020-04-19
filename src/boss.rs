@@ -51,6 +51,13 @@ pub struct Boss {
     pub shot_time2: Instant,
     pub class: BossType,
 }
+
+fn intercept(a: Vector2<f32>, b: Vector2<f32>, u: Vector2<f32>, v_mag: f32) -> Vector2<f32> {
+    let ab = (b - a).normalize();
+    let ui = u - u.dot(&ab) * ab;
+    let vj_mag = (v_mag * v_mag - ui.magnitude_squared()).sqrt();
+    return ab * vj_mag + ui
+}
 impl Boss {
     pub fn tick<'a>(
         &mut self,
@@ -68,36 +75,33 @@ impl Boss {
                 nearest_player = p;
             }
         }
-        let vel = (nearest_player.pos - self.pos).normalize() * 3.0;
-        self.pos += vel * dt;
+
+        let vel = intercept(self.pos, nearest_player.pos, nearest_player.vel, 15.0);
+        self.pos += vel.normalize() * 5.4 * dt;
+        self.pos.x = self.pos.x.max(0.0).min(800.0);
+        self.pos.y = self.pos.y.max(0.0).min(800.0);
 
         if self.shot_time.elapsed() > Duration::from_millis(500) {
-            let velp = Vector2::new(vel.y, -vel.x);
             boss_bullets.push(BossBullet {
-                pos: self.pos - velp * 10.0,
+                pos: self.pos,
                 id: rng.gen::<usize>(),
                 spawn: Instant::now(),
-                vel: vel * 3.0 + velp * 0.5,
+                vel: vel,
             });
-            boss_bullets.push(BossBullet {
-                pos: self.pos + velp * 10.0,
-                id: rng.gen::<usize>(),
-                spawn: Instant::now(),
-                vel: vel * 3.0 - velp * 0.5,
-            });
+          
             self.shot_time = Instant::now();
         }
         if let BossType::HardcoreBoss = self.class {
             if self.shot_time2.elapsed() > Duration::from_millis(250) {
-                let velp = Vector2::new(vel.y, -vel.x);
+                let velp = Vector2::new(vel.y, -vel.x).normalize();
                 boss_bullets.push(BossBullet {
-                    pos: self.pos - velp * 20.0,
+                    pos: self.pos - velp * 50.0,
                     id: rng.gen::<usize>(),
                     spawn: Instant::now(),
                     vel: vel * 0.1,
                 });
                 boss_bullets.push(BossBullet {
-                    pos: self.pos + velp * 20.0,
+                    pos: self.pos + velp * 50.0,
                     id: rng.gen::<usize>(),
                     spawn: Instant::now(),
                     vel: vel * 0.1,

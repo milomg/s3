@@ -8,6 +8,11 @@ import { scene, renderer, camera } from "./scene";
 import { createText } from "./text";
 import { ws } from "./connection";
 import "./controls";
+import Stats from "stats.js";
+
+var stats = new Stats();
+stats.showPanel( 1 ); // 0: fps, 1: ms, 2: mb, 3+: custom
+document.body.appendChild( stats.dom );
 
 let bulletGeometry = new THREE.ConeBufferGeometry(1.5, 50, 4);
 let bulletMaterial = new THREE.MeshLambertMaterial({ color: 0x81e1fc });
@@ -96,12 +101,15 @@ finalComposer.addPass(finalPass);
 let myid = 0;
 
 function draw() {
+  stats.begin();
+
   darkenUI();
   bloomComposer.render();
   restoreUI();
 
   finalComposer.render();
 
+  stats.end();
   window.requestAnimationFrame(draw);
 }
 draw();

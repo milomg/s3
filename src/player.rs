@@ -81,7 +81,7 @@ impl Player {
             match self.class {
                 Classes::Quickshot => {
                     let btarget = self.pos + acc * self.target.magnitude().max(100.0);
-                    for pos in sunflower(20) {
+                    for pos in sunflower(self.health / 10) {
                         let bpos = self.pos + 50.0 * pos;
                         let rvec = Vector2::new(rng.gen_range(-8.0, 8.0), rng.gen_range(-8.0, 8.0));
                         bullets.push(Bullet {
@@ -96,12 +96,12 @@ impl Player {
                 }
                 _ => {
                     let wide = self.target.magnitude().max(100.0);
-                    for i in -10..=10 {
+                    for i in -(self.health as i16 / 20)..=(self.health as i16) / 20 {
                         let angle = self.target.y.atan2(self.target.x) + i as f32 / 8.0;
                         let circle = Vector2::new(angle.cos(), angle.sin());
                         bullets.push(Bullet {
                             pos: self.pos + circle * 50.0,
-                            vel: (acc + circle * (wide - 100.0) / 200.0).normalize() * 15.0,
+                            vel: (acc * (wide - 100.0) / 12.0 + circle).normalize() * 15.0,
                             spawn: Instant::now(),
                             id: rng.gen::<usize>(),
                             owner: self.id,

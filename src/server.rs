@@ -185,7 +185,7 @@ impl GameServer {
     }
     fn move_and_things(&mut self) {
         let dt = self.tick.elapsed().as_millis() as f32 / 16.0;
-        let ht = (self.health_tick.elapsed().as_millis() / 24) as u8;
+        let ht = (self.health_tick.elapsed().as_millis() / 48) as u8;
         let qt = (self.quickshot_mana.elapsed().as_millis() / 24) as u8; // 2/3*1/16 of millis
         let st = (self.sniper_mana.elapsed().as_millis() / 16) as u8;
         if let Some(boss) = &mut self.boss {
@@ -219,7 +219,7 @@ impl GameServer {
             });
         }
 
-        self.health_tick += Duration::from_millis(ht as u64 * 24);
+        self.health_tick += Duration::from_millis(ht as u64 * 48);
         self.quickshot_mana += Duration::from_millis(qt as u64 * 24);
         self.sniper_mana += Duration::from_millis(st as u64 * 16);
 
@@ -357,6 +357,7 @@ impl GameServer {
         let dbt = RTree::bulk_load(self.boss_bullets.iter().map(|b| b).collect());
 
         let mut health_map = HashMap::new();
+        let mut health_add = HashMap::new();
         let mut delete_bullets = HashSet::new();
         let mut delete_boss_bullets = HashSet::new();
         if let Some(boss) = &mut self.boss {
@@ -366,7 +367,8 @@ impl GameServer {
                     if (intersect.pos - boss.pos).magnitude()
                         <= (Boss::RADIUS + Bullet::RADIUS).powf(2.0)
                     {
-                        boss.health = boss.health.saturating_sub(15);
+                        boss.health = boss.health.saturating_sub(8);
+                        *health_add.entry(intersect.owner).or_insert(0) += 4;
 
                         delete_bullets.insert(intersect.id);
                     }
@@ -384,7 +386,8 @@ impl GameServer {
                         && (intersect.pos - p.pos).magnitude()
                             <= (Player::RADIUS + Bullet::RADIUS).powf(2.0)
                     {
-                        *health_map.entry(*i).or_insert(0) += 30;
+                        *health_map.entry(*i).or_insert(0) += 8;
+                        *health_add.entry(intersect.owner).or_insert(0) += 4;
 
                         delete_bullets.insert(intersect.id);
                     }
@@ -395,7 +398,12 @@ impl GameServer {
                 if (intersect.pos - p.pos).magnitude()
                     <= (Player::RADIUS + BossBullet::RADIUS).powf(2.0)
                 {
-                    *health_map.entry(*i).or_insert(0) += 60;
+                    if let Some(boss) = &mut self.boss {
+                        if boss.health > 0 {
+                            boss.health = boss.health.saturating_add(20);
+                        }
+                    }
+                    *health_map.entry(*i).or_insert(0) += 50;
 
                     delete_boss_bullets.insert(intersect.id);
                 }
@@ -406,6 +414,11 @@ impl GameServer {
             self.players
                 .entry(*i)
                 .and_modify(|p| p.health = p.health.saturating_sub(*h));
+        }
+        for (i, h) in &health_add {
+            self.players
+                .entry(*i)
+                .and_modify(|p| p.health = p.health.saturating_add(*h));
         }
         self.bullets.retain(|b| !delete_bullets.contains(&b.id));
         self.boss_bullets
