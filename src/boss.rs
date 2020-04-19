@@ -1,3 +1,4 @@
+use crate::consts::WORLDSIZE;
 use crate::player::Player;
 use na::Vector2;
 use nalgebra as na;
@@ -55,8 +56,8 @@ pub struct Boss {
 fn intercept(a: Vector2<f32>, b: Vector2<f32>, u: Vector2<f32>, v_mag: f32) -> Vector2<f32> {
     let ab = (b - a).normalize();
     let ui = u - u.dot(&ab) * ab;
-    let vj_mag = (v_mag * v_mag - ui.magnitude_squared()).sqrt();
-    return ab * vj_mag + ui
+    let vj_mag = (v_mag * v_mag - ui.magnitude_squared()).max(0.0).sqrt();
+    return ab * vj_mag + ui;
 }
 impl Boss {
     pub fn tick<'a>(
@@ -76,10 +77,10 @@ impl Boss {
             }
         }
 
-        let vel = intercept(self.pos, nearest_player.pos, nearest_player.vel, 15.0);
-        self.pos += vel.normalize() * 5.4 * dt;
-        self.pos.x = self.pos.x.max(0.0).min(800.0);
-        self.pos.y = self.pos.y.max(0.0).min(800.0);
+        let vel = intercept(self.pos, nearest_player.pos, nearest_player.vel, 10.0);
+        self.pos += vel.normalize() * 4.0 * dt;
+        self.pos.x = self.pos.x.max(0.0).min(WORLDSIZE);
+        self.pos.y = self.pos.y.max(0.0).min(WORLDSIZE);
 
         if self.shot_time.elapsed() > Duration::from_millis(500) {
             boss_bullets.push(BossBullet {
@@ -88,7 +89,7 @@ impl Boss {
                 spawn: Instant::now(),
                 vel: vel,
             });
-          
+
             self.shot_time = Instant::now();
         }
         if let BossType::HardcoreBoss = self.class {

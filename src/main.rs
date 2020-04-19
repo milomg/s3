@@ -8,6 +8,7 @@ use serde_json::json;
 
 mod boss;
 mod bullet;
+mod consts;
 mod player;
 mod server;
 

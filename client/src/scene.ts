@@ -1,6 +1,7 @@
 import * as THREE from "three";
 
 export let scene = new THREE.Scene();
+const WORLDSIZE = 1600;
 
 {
   const near = 806;
@@ -11,12 +12,12 @@ export let scene = new THREE.Scene();
 }
 
 {
-  let material = new THREE.LineBasicMaterial({ color: 0x0f0f0f });
+  let material = new THREE.LineBasicMaterial({ color: 0x111111 });
   let geometry = new THREE.Geometry();
   geometry.vertices.push(new THREE.Vector3(0, 0, 0));
-  geometry.vertices.push(new THREE.Vector3(0, 800, 0));
-  geometry.vertices.push(new THREE.Vector3(800, 800, 0));
-  geometry.vertices.push(new THREE.Vector3(800, 0, 0));
+  geometry.vertices.push(new THREE.Vector3(0, WORLDSIZE, 0));
+  geometry.vertices.push(new THREE.Vector3(WORLDSIZE, WORLDSIZE, 0));
+  geometry.vertices.push(new THREE.Vector3(WORLDSIZE, 0, 0));
   geometry.vertices.push(new THREE.Vector3(0, 0, 0));
   let line = new THREE.Line(geometry, material);
   scene.add(line);
@@ -35,8 +36,8 @@ export let scene = new THREE.Scene();
 let aspect = window.innerHeight / window.innerWidth;
 let view = 800;
 export let camera = new THREE.OrthographicCamera(-view, view, view * aspect, -view * aspect, 1, 1000);
-camera.position.set(400, 400, 800);
-camera.lookAt(400, 400, 0);
+camera.position.set(WORLDSIZE / 2, WORLDSIZE / 2, 800);
+camera.lookAt(WORLDSIZE / 2, WORLDSIZE / 2, 0);
 
 export let renderer = new THREE.WebGLRenderer({ logarithmicDepthBuffer: true });
 renderer.setPixelRatio(window.devicePixelRatio || 1);

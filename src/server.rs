@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 
 use crate::boss::*;
 use crate::bullet::*;
+use crate::consts::*;
 use crate::player::*;
 
 /// New game session is created
@@ -148,7 +149,7 @@ impl GameServer {
             wormholes: Vec::new(),
             boss: if let Some(boss_type) = boss {
                 Some(Boss {
-                    pos: Vector2::new(rng.gen_range(0.0, 800.0), rng.gen_range(0.0, 800.0)),
+                    pos: Vector2::new(rng.gen_range(0.0, WORLDSIZE), rng.gen_range(0.0, WORLDSIZE)),
                     health: 255,
                     shot_time: Instant::now(),
                     shot_time2: Instant::now(),
@@ -200,8 +201,8 @@ impl GameServer {
                 }
             } else if self.boss_dead.elapsed() > Duration::from_millis(3000) {
                 boss.pos = Vector2::new(
-                    self.rng.gen_range(0.0, 800.0),
-                    self.rng.gen_range(0.0, 800.0),
+                    self.rng.gen_range(0.0, WORLDSIZE),
+                    self.rng.gen_range(0.0, WORLDSIZE),
                 );
                 boss.health = 255;
                 boss.shot_time = Instant::now();
@@ -240,7 +241,7 @@ impl GameServer {
             b.spawn.elapsed()
                 < Duration::from_millis(match b.class {
                     Classes::Quickshot => 600,
-                    _ => 1250,
+                    _ => 1000,
                 })
         });
 
@@ -518,9 +519,13 @@ impl Handler<NewWormhole> for GameServer {
     type Result = ();
 
     fn handle(&mut self, msg: NewWormhole, _: &mut Context<Self>) -> Self::Result {
-        let b1 = if self.rng.gen::<bool>() { 800.0 } else { 0.0 };
+        let b1 = if self.rng.gen::<bool>() {
+            WORLDSIZE
+        } else {
+            0.0
+        };
         let b2 = self.rng.gen::<bool>();
-        let pos = self.rng.gen_range(0.0, 800.0);
+        let pos = self.rng.gen_range(0.0, WORLDSIZE);
         let pos = Vector2::new(if b2 { b1 } else { pos }, if b2 { pos } else { b1 });
         self.wormholes.push(Wormhole {
             pos,
@@ -558,8 +563,8 @@ impl Handler<DecodedMessage> for GameServer {
 
     fn handle(&mut self, msg: DecodedMessage, _: &mut Context<Self>) {
         if let ClientMessage::Spawn(n, c) = msg.m {
-            let x = self.rng.gen_range(0.0, 800.0);
-            let y = self.rng.gen_range(0.0, 800.0);
+            let x = self.rng.gen_range(0.0, WORLDSIZE);
+            let y = self.rng.gen_range(0.0, WORLDSIZE);
 
             let p = Player {
                 id: msg.id,
