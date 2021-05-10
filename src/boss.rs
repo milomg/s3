@@ -47,6 +47,7 @@ impl BossBullet {
 }
 pub struct Boss {
     pub pos: Vector2<f32>,
+    pub vel: Vector2<f32>,
     pub health: u8,
     pub shot_time: Instant,
     pub shot_time2: Instant,
@@ -78,7 +79,9 @@ impl Boss {
         }
 
         let vel = intercept(self.pos, nearest_player.pos, nearest_player.vel, 10.0);
-        self.pos += vel.normalize() * 4.0 * dt;
+        self.vel += vel.normalize() * 0.4;
+        self.vel *= 0.9_f32;
+        self.pos += self.vel;
         self.pos.x = self.pos.x.max(0.0).min(WORLDSIZE);
         self.pos.y = self.pos.y.max(0.0).min(WORLDSIZE);
 

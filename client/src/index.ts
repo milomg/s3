@@ -10,7 +10,7 @@ import { ws } from "./connection";
 import "./controls";
 import Stats from "stats.js";
 
-var stats = new Stats();
+let stats = new Stats();
 stats.showPanel(1); // 0: fps, 1: ms, 2: mb, 3+: custom
 document.body.appendChild(stats.dom);
 
@@ -58,7 +58,7 @@ function restoreUI() {
   }
 }
 
-var finalPass = new ShaderPass(
+let finalPass = new ShaderPass(
   new THREE.ShaderMaterial({
     uniforms: {
       baseTexture: { value: null },
@@ -78,15 +78,9 @@ var finalPass = new ShaderPass(
 
     varying vec2 vUv;
 
-    vec4 getTexture( sampler2D texelToLinearTexture ) {
-
-      return mapTexelToLinear( texture2D( texelToLinearTexture , vUv ) );
-
-    }
-
     void main() {
 
-      gl_FragColor = ( getTexture( baseTexture ) + vec4( 1.0 ) * getTexture( bloomTexture ) );
+      gl_FragColor = ( texture2D( baseTexture, vUv ) + vec4( 1.0 ) * texture2D( bloomTexture, vUv ) );
 
     }`,
     defines: {},
@@ -95,7 +89,7 @@ var finalPass = new ShaderPass(
 );
 finalPass.needsSwap = true;
 
-var finalComposer = new EffectComposer(renderer);
+let finalComposer = new EffectComposer(renderer);
 finalComposer.addPass(renderPass);
 finalComposer.addPass(finalPass);
 let myid = 0;

@@ -61,14 +61,10 @@ impl Player {
             self.split_time = Instant::now();
             self.mana -= 100;
         }
-        if self.split_time.elapsed() < Duration::from_millis(600) {
-            self.vel += 1. * acc * dt;
-            self.vel *= (0.95_f32).powf(dt);
-        } else {
-            self.vel += 0.6 * acc * dt;
-            self.vel *= (0.9_f32).powf(dt);
-        }
-        self.pos += self.vel;
+        self.vel += 0.6 * acc * dt;
+        self.vel *= (0.9_f32).powf(dt);
+        let boosmult = if self.split_time.elapsed() < Duration::from_millis(500) {3.0}else{1.0};
+        self.pos += self.vel * boosmult;
         self.pos.x = self.pos.x.max(0.0).min(WORLDSIZE);
         self.pos.y = self.pos.y.max(0.0).min(WORLDSIZE);
 
@@ -82,7 +78,7 @@ impl Player {
             match self.class {
                 Classes::Quickshot => {
                     let btarget = self.pos + acc * self.target.magnitude().max(100.0);
-                    for pos in sunflower(self.health / 10) {
+                    for pos in sunflower(20) {
                         let bpos = self.pos + 50.0 * pos;
                         let rvec = Vector2::new(rng.gen_range(-8.0, 8.0), rng.gen_range(-8.0, 8.0));
                         bullets.push(Bullet {
@@ -97,7 +93,7 @@ impl Player {
                 }
                 _ => {
                     let wide = self.target.magnitude().max(100.0).min(600.0);
-                    let totalbullets = self.health as i16 / 51 + 5;
+                    let totalbullets = 10;
                     for i in (-totalbullets)..=(totalbullets) {
                         let angle = self.target.y.atan2(self.target.x) + (i as f32 / totalbullets as f32) * PI / 2.0;
                         let circle = Vector2::new(angle.cos(), angle.sin());

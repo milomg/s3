@@ -13,12 +13,13 @@ const WORLDSIZE = 1600;
 
 {
   let material = new THREE.LineBasicMaterial({ color: 0x111111 });
-  let geometry = new THREE.Geometry();
-  geometry.vertices.push(new THREE.Vector3(0, 0, 0));
-  geometry.vertices.push(new THREE.Vector3(0, WORLDSIZE, 0));
-  geometry.vertices.push(new THREE.Vector3(WORLDSIZE, WORLDSIZE, 0));
-  geometry.vertices.push(new THREE.Vector3(WORLDSIZE, 0, 0));
-  geometry.vertices.push(new THREE.Vector3(0, 0, 0));
+  let points = [];
+  points.push(new THREE.Vector3(0, 0, 0));
+  points.push(new THREE.Vector3(0, WORLDSIZE, 0));
+  points.push(new THREE.Vector3(WORLDSIZE, WORLDSIZE, 0));
+  points.push(new THREE.Vector3(WORLDSIZE, 0, 0));
+  points.push(new THREE.Vector3(0, 0, 0));
+  let geometry = new THREE.BufferGeometry().setFromPoints(points);
   let line = new THREE.Line(geometry, material);
   scene.add(line);
 }

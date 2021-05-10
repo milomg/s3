@@ -150,6 +150,7 @@ impl GameServer {
             boss: if let Some(boss_type) = boss {
                 Some(Boss {
                     pos: Vector2::new(rng.gen_range(0.0, WORLDSIZE), rng.gen_range(0.0, WORLDSIZE)),
+                    vel: Vector2::new(0.0, 0.0),
                     health: 255,
                     shot_time: Instant::now(),
                     shot_time2: Instant::now(),
@@ -204,6 +205,7 @@ impl GameServer {
                     self.rng.gen_range(0.0, WORLDSIZE),
                     self.rng.gen_range(0.0, WORLDSIZE),
                 );
+                boss.vel = Vector2::new(0.0, 0.0);
                 boss.health = 255;
                 boss.shot_time = Instant::now();
                 boss.shot_time2 = Instant::now();
@@ -496,19 +498,18 @@ impl Handler<Transfer> for GameServer {
         self.players.insert(msg.0, msg.2);
         msg.1.do_send(Message(
             json!({
-                "clear":true
+                "clear": true
             })
             .to_string(),
         ));
         for w in &self.wormholes {
             msg.1.do_send(Message(
-                "{\"wormhole\":".to_owned()
-                    + &::serde_json::to_string(&ClientWormhole {
+                json!({
+                    "wormhole": ClientWormhole {
                         pos: w.pos,
                         color: w.color,
-                    })
-                    .unwrap()
-                    + "}",
+                    }
+                }).to_string()
             ));
         }
         self.sessions.insert(msg.0, msg.1);
