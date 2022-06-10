@@ -5,22 +5,21 @@ authors = ["modderme123 <modderme123@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-rand = "*"
-nalgebra = {version = "*", features = ["serde-serialize"]}
-rstar = "*"
+rand = "0.8"
+nalgebra = {version = "0.31", features = ["serde-serialize"]}
+rstar = "0.9"
 
-serde = "*"
-serde_derive = "*"
-serde_json = "*"
-serde_repr = "*"
+serde = "1"
+serde_derive = "1"
+serde_json = "1"
+serde_repr = "0.1"
 
-actix = "*"
-actix-web = "*"
-actix-files = "*"
-actix-web-actors = "*"
-actix-rt = "*"
+actix = "0.13"
+actix-web = "4.0"
+actix-files = "0.6"
+actix-web-actors = "4.1"
 
-r2d2 = "*"
-r2d2_sqlite = "*"
-rusqlite = "*"
-failure = "*"
+r2d2 = "0.8"
+r2d2_sqlite = "0.8"
+
+env_logger = "0.9"

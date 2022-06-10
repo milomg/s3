@@ -1,6 +1,6 @@
-use ::actix::*;
-use actix_files as fs;
-use actix_web::*;
+use actix::*;
+use actix_files::Files;
+use actix_web::{middleware::Logger, web, App, Error, HttpRequest, HttpResponse, HttpServer};
 use actix_web_actors::ws;
 use na::Vector2;
 use nalgebra as na;
@@ -21,7 +21,7 @@ async fn game_route(
     req: HttpRequest,
     stream: web::Payload,
     srv: web::Data<Addr<server::GameServer>>,
-) -> Result<HttpResponse> {
+) -> Result<HttpResponse, Error> {
     ws::start(
         WsGameSession {
             id: 0,
@@ -121,9 +121,9 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for WsGameSession {
     }
 }
 
-#[actix_rt::main]
+#[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    // let sys = actix::System::new("ghist");
+    env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
     // Start game server actor in separate thread
     let homeserver = GameServer::new(None, None).start();
@@ -141,9 +141,10 @@ async fn main() -> std::io::Result<()> {
     // Create Http server with WebSocket support
     HttpServer::new(move || {
         App::new()
-            .data(homeserver.clone())
-            .service(web::resource("/ws/").to(game_route))
-            .service(fs::Files::new("/", "client/dist/").index_file("index.html"))
+            .app_data(homeserver.clone())
+            .route("/ws", web::get().to(game_route))
+            .service(Files::new("/", "client/dist/").index_file("index.html"))
+            .wrap(Logger::default())
     })
     .bind(format!("0.0.0.0:{}", port))?
     .run()

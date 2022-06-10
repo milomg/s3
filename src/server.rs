@@ -149,7 +149,7 @@ impl GameServer {
             wormholes: Vec::new(),
             boss: if let Some(boss_type) = boss {
                 Some(Boss {
-                    pos: Vector2::new(rng.gen_range(0.0, WORLDSIZE), rng.gen_range(0.0, WORLDSIZE)),
+                    pos: Vector2::new(rng.gen_range(0.0..WORLDSIZE), rng.gen_range(0.0..WORLDSIZE)),
                     vel: Vector2::new(0.0, 0.0),
                     health: 255,
                     shot_time: Instant::now(),
@@ -202,8 +202,8 @@ impl GameServer {
                 }
             } else if self.boss_dead.elapsed() > Duration::from_millis(3000) {
                 boss.pos = Vector2::new(
-                    self.rng.gen_range(0.0, WORLDSIZE),
-                    self.rng.gen_range(0.0, WORLDSIZE),
+                    self.rng.gen_range(0.0..WORLDSIZE),
+                    self.rng.gen_range(0.0..WORLDSIZE),
                 );
                 boss.vel = Vector2::new(0.0, 0.0);
                 boss.health = 255;
@@ -509,7 +509,8 @@ impl Handler<Transfer> for GameServer {
                         pos: w.pos,
                         color: w.color,
                     }
-                }).to_string()
+                })
+                .to_string(),
             ));
         }
         self.sessions.insert(msg.0, msg.1);
@@ -526,7 +527,7 @@ impl Handler<NewWormhole> for GameServer {
             0.0
         };
         let b2 = self.rng.gen::<bool>();
-        let pos = self.rng.gen_range(0.0, WORLDSIZE);
+        let pos = self.rng.gen_range(0.0..WORLDSIZE);
         let pos = Vector2::new(if b2 { b1 } else { pos }, if b2 { pos } else { b1 });
         self.wormholes.push(Wormhole {
             pos,
@@ -564,8 +565,8 @@ impl Handler<DecodedMessage> for GameServer {
 
     fn handle(&mut self, msg: DecodedMessage, _: &mut Context<Self>) {
         if let ClientMessage::Spawn(n, c) = msg.m {
-            let x = self.rng.gen_range(0.0, WORLDSIZE);
-            let y = self.rng.gen_range(0.0, WORLDSIZE);
+            let x = self.rng.gen_range(0.0..WORLDSIZE);
+            let y = self.rng.gen_range(0.0..WORLDSIZE);
 
             let p = Player {
                 id: msg.id,

@@ -63,7 +63,11 @@ impl Player {
         }
         self.vel += 0.6 * acc * dt;
         self.vel *= (0.9_f32).powf(dt);
-        let boosmult = if self.split_time.elapsed() < Duration::from_millis(500) {3.0}else{1.0};
+        let boosmult = if self.split_time.elapsed() < Duration::from_millis(500) {
+            3.0
+        } else {
+            1.0
+        };
         self.pos += self.vel * boosmult;
         self.pos.x = self.pos.x.max(0.0).min(WORLDSIZE);
         self.pos.y = self.pos.y.max(0.0).min(WORLDSIZE);
@@ -80,7 +84,7 @@ impl Player {
                     let btarget = self.pos + acc * self.target.magnitude().max(100.0);
                     for pos in sunflower(20) {
                         let bpos = self.pos + 50.0 * pos;
-                        let rvec = Vector2::new(rng.gen_range(-8.0, 8.0), rng.gen_range(-8.0, 8.0));
+                        let rvec = Vector2::new(rng.gen_range(-8.0..8.0), rng.gen_range(-8.0..8.0));
                         bullets.push(Bullet {
                             pos: bpos,
                             vel: (btarget - bpos + rvec).normalize() * 15.0,
@@ -95,11 +99,14 @@ impl Player {
                     let wide = self.target.magnitude().max(100.0).min(600.0);
                     let totalbullets = 10;
                     for i in (-totalbullets)..=(totalbullets) {
-                        let angle = self.target.y.atan2(self.target.x) + (i as f32 / totalbullets as f32) * PI / 2.0;
+                        let angle = self.target.y.atan2(self.target.x)
+                            + (i as f32 / totalbullets as f32) * PI / 2.0;
                         let circle = Vector2::new(angle.cos(), angle.sin());
                         bullets.push(Bullet {
                             pos: self.pos + circle * 50.0,
-                            vel: (acc * (wide - 100.0) + circle * (600.0 - wide) / 20.0).normalize() * 15.0,
+                            vel: (acc * (wide - 100.0) + circle * (600.0 - wide) / 20.0)
+                                .normalize()
+                                * 15.0,
                             spawn: Instant::now(),
                             id: rng.gen::<usize>(),
                             owner: self.id,

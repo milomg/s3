@@ -1,5 +1,5 @@
 let secure = (window.location.protocol.match(/s/g) || "").toString();
-export let ws = new WebSocket(`ws${secure}://${window.location.host}/ws/`);
+export let ws = new WebSocket(`ws${secure}://${window.location.host}/ws`);
 export let opened = false;
 
 export function send(m: any) {

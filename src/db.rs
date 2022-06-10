@@ -1,8 +1,7 @@
 // THIS FILE IS NOT REFERENCED IN MAIN, IT IS A WIP
 
-use rusqlite::{NO_PARAMS};
-use failure::Error;
 use r2d2_sqlite;
+use r2d2_sqlite::rusqlite::{NO_PARAMS};
 use r2d2_sqlite::SqliteConnectionManager;
 use actix::prelude::*;
 

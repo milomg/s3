@@ -7,6 +7,7 @@ function runBuild() {
   build({
     entryPoints: ["./src/index.ts"],
     outfile: "dist/main.js",
+    target: "esnext",
     sourcemap: true,
     bundle: true,
     minify: prod,

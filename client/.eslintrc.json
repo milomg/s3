@@ -16,6 +16,6 @@
   },
   "plugins": ["@typescript-eslint"],
   "rules": {
-    "prefer-const":"off"
+    "prefer-const": "off"
   }
 }
